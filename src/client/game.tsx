@@ -1,75 +1,419 @@
+
 import './index.css';
 
-import { StrictMode } from 'react';
+import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { navigateTo } from '@devvit/web/client';
-import { useCounter } from './hooks/useCounter';
 
-export const App = () => {
-  const { count, username, loading, increment, decrement } = useCounter();
+type Screen = 'intro' | 'investigate' | 'verdict' | 'results';
+type Tab = 'evidence' | 'suspects';
+
+const suspects = [
+  {
+    id: 'arthur',
+    name: 'Arthur Vale',
+    role: 'Station Manager',
+    statement:
+      'I was in the control room reviewing the departure log. I never returned to my office.',
+  },
+  {
+    id: 'mara',
+    name: 'Mara Chen',
+    role: 'Train Conductor',
+    statement:
+      'I was on Platform 2 checking the final train until it departed at 11:45.',
+  },
+  {
+    id: 'elias',
+    name: 'Elias Reed',
+    role: 'Maintenance Technician',
+    statement:
+      'I was repairing the signal cabinet in the east tunnel.',
+  },
+  {
+    id: 'nina',
+    name: 'Nina Brooks',
+    role: 'Passenger',
+    statement:
+      'I was waiting in the main hall. I never went near the manager’s office.',
+  },
+];
+
+const evidence = [
+  {
+    id: 'key-register',
+    title: 'The Key Register',
+    category: 'ACCESS',
+    description:
+      'Only two keys open the manager’s office. Key A remained on Arthur’s secured key ring in the control room. Key B was stored in the emergency cabinet.',
+  },
+  {
+    id: 'departure-log',
+    title: 'The Departure Log',
+    category: 'TIMELINE',
+    description:
+      'Continuous control-room footage places Arthur there from 11:35 PM through 11:45 PM.',
+  },
+  {
+    id: 'platform-camera',
+    title: 'Camera 2B',
+    category: 'SURVEILLANCE',
+    description:
+      'Continuous footage places Mara on Platform 2 from 11:36 PM until the train departed at 11:45 PM.',
+  },
+  {
+    id: 'signal-repair',
+    title: 'The Signal Repair',
+    category: 'MAINTENANCE',
+    description:
+      'Continuous tunnel footage places Elias at the east signal cabinet from 11:34 PM through 11:57 PM.',
+  },
+  {
+    id: 'hall-camera',
+    title: 'The Waiting Hall',
+    category: 'SURVEILLANCE',
+    description:
+      'Nina appears on camera at 11:35 PM and 11:46 PM. The corridor to the office is outside the camera’s view.',
+  },
+  {
+    id: 'key-cabinet',
+    title: 'The Emergency Key',
+    category: 'CRITICAL EVIDENCE',
+    description:
+      'Cabinet footage shows Nina removing Key B at 11:39 PM, returning it at 11:44 PM, and replacing the numbered security seal.',
+  },
+];
+
+export function App() {
+  const [screen, setScreen] = useState<Screen>('intro');
+  const [tab, setTab] = useState<Tab>('evidence');
+  const [suspect, setSuspect] = useState('');
+  const [clue, setClue] = useState('');
+  const [expandedEvidence, setExpandedEvidence] = useState<string | null>(null);
+  const [expandedSuspect, setExpandedSuspect] = useState<string | null>(null);
+
+  const isCorrect = suspect === 'nina';
+  const proofCorrect = isCorrect && clue === 'key-cabinet';
+  const score = (isCorrect ? 100 : 0) + (proofCorrect ? 50 : 0);
+
+  const buttonClass =
+    'w-full rounded-xl bg-amber-400 px-5 py-3 font-bold text-slate-950 transition hover:bg-amber-300 active:scale-[0.98]';
+
   return (
-    <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-white dark:bg-gray-900">
-      <img
-        className="object-contain w-1/2 max-w-[250px] mx-auto"
-        src="/snoo.png"
-        alt="Snoo"
-      />
-      <div className="flex flex-col items-center gap-2">
-        <h1 className="text-2xl font-bold text-center text-gray-900 dark:text-gray-100">
-          {username ? `Hey ${username} 👋` : ''}
-        </h1>
-        <p className="text-base text-center text-gray-600 dark:text-gray-300">
-          Edit{' '}
-          <span className="bg-[#e5ebee] dark:bg-gray-700 px-1 py-0.5 rounded">
-            src/client/game.tsx
-          </span>{' '}
-          to get started.
-        </p>
+    <div className="min-h-screen bg-[#101820] px-4 py-5 text-slate-100">
+      <div className="mx-auto flex max-w-lg flex-col gap-5">
+        <header className="flex items-center justify-between border-b border-slate-700 pb-3">
+          <div>
+            <p className="text-xs font-bold tracking-[0.25em] text-amber-400">
+              DAILY ALIBI
+            </p>
+            <h1 className="text-xl font-black">THE JURY</h1>
+          </div>
+          <span className="rounded-lg border border-slate-600 px-3 py-1 text-xs">
+            CASE 001
+          </span>
+        </header>
+
+        {screen === 'intro' && (
+          <section className="flex flex-col gap-5">
+            <div className="rounded-2xl border border-amber-500/30 bg-[#1c2731] p-5">
+              <p className="mb-2 text-xs tracking-widest text-amber-400">
+                UNION STATION · 11:42 PM
+              </p>
+              <h2 className="mb-3 text-3xl font-black">
+                LAST TRAIN OUT
+              </h2>
+              <p className="leading-7 text-slate-300">
+                A rare silver pocket watch vanished from the station
+                manager’s locked office.
+              </p>
+              <p className="mt-3 leading-7 text-slate-300">
+                The theft occurred between 11:40 and 11:43 PM.
+                Four people were inside the station.
+              </p>
+              <p className="mt-3 font-semibold text-amber-300">
+                One of them is lying.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                ['4', 'SUSPECTS'],
+                ['6', 'CLUES'],
+                ['1', 'CULPRIT'],
+              ].map(([number, label]) => (
+                <div
+                  key={label}
+                  className="rounded-xl bg-[#1c2731] p-3"
+                >
+                  <div className="text-2xl font-black text-amber-400">
+                    {number}
+                  </div>
+                  <div className="text-[10px] tracking-wider text-slate-400">
+                    {label}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-sm text-slate-400">
+              Investigate the evidence. Identify the thief.
+              Select the clue that proves your accusation.
+            </p>
+
+            <button
+              className={buttonClass}
+              onClick={() => setScreen('investigate')}
+            >
+              OPEN CASE FILE
+            </button>
+          </section>
+        )}
+
+        {screen === 'investigate' && (
+          <section className="flex flex-col gap-4">
+            <div>
+              <h2 className="text-2xl font-black">Investigation</h2>
+              <p className="text-sm text-slate-400">
+                Examine the evidence before making your accusation.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {(['evidence', 'suspects'] as const).map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setTab(item)}
+                  className={`rounded-xl px-4 py-3 font-bold capitalize ${tab === item
+                    ? 'bg-amber-400 text-slate-950'
+                    : 'bg-[#263440] text-slate-300'
+                    }`}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+
+            {tab === 'evidence' && (
+              <div className="flex flex-col gap-3">
+                {evidence.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className="overflow-hidden rounded-xl border border-slate-700 bg-[#1c2731]"
+                  >
+                    <button
+                      className="w-full p-4 text-left"
+                      aria-expanded={expandedEvidence === item.id}
+                      onClick={() =>
+                        setExpandedEvidence(
+                          expandedEvidence === item.id ? null : item.id
+                        )
+                      }
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs text-amber-400">
+                            EVIDENCE {String(index + 1).padStart(2, '0')}
+                            {' · '}
+                            {item.category}
+                          </p>
+                          <h3 className="mt-1 font-bold">{item.title}</h3>
+                        </div>
+                        <span aria-hidden="true" className="text-amber-400">
+                          {expandedEvidence === item.id ? '−' : '+'}
+                        </span>
+                      </div>
+                    </button>
+
+                    {expandedEvidence === item.id && (
+                      <p className="border-t border-slate-700 p-4 leading-7 text-slate-300">
+                        {item.description}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {tab === 'suspects' && (
+              <div className="flex flex-col gap-3">
+                {suspects.map((person) => (
+                  <div
+                    key={person.id}
+                    className="rounded-xl border border-slate-700 bg-[#1c2731]"
+                  >
+                    <button
+                      className="w-full p-4 text-left"
+                      aria-expanded={expandedSuspect === person.id}
+                      onClick={() =>
+                        setExpandedSuspect(
+                          expandedSuspect === person.id ? null : person.id
+                        )
+                      }
+                    >
+                      <div className="flex justify-between gap-3">
+                        <div>
+                          <h3 className="font-bold">{person.name}</h3>
+                          <p className="text-xs text-slate-400">
+                            {person.role}
+                          </p>
+                        </div>
+                        <span aria-hidden="true" className="text-amber-400">
+                          {expandedSuspect === person.id ? '−' : '+'}
+                        </span>
+                      </div>
+                    </button>
+
+                    {expandedSuspect === person.id && (
+                      <p className="border-t border-slate-700 p-4 italic leading-7 text-slate-300">
+                        “{person.statement}”
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              className={buttonClass}
+              onClick={() => setScreen('verdict')}
+            >
+              DELIVER VERDICT
+            </button>
+          </section>
+        )}
+
+        {screen === 'verdict' && (
+          <section className="flex flex-col gap-5">
+            <div>
+              <h2 className="text-2xl font-black">Your Verdict</h2>
+              <p className="text-sm text-slate-400">
+                Choose carefully. Your accusation is final.
+              </p>
+            </div>
+
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-2 font-bold">
+                Who stole the pocket watch?
+              </legend>
+              {suspects.map((person) => (
+                <label
+                  key={person.id}
+                  className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-[#1c2731] p-3"
+                >
+                  <input
+                    type="radio"
+                    name="suspect"
+                    value={person.id}
+                    checked={suspect === person.id}
+                    onChange={() => setSuspect(person.id)}
+                    className="accent-amber-400"
+                  />
+                  {person.name}
+                </label>
+              ))}
+            </fieldset>
+
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-2 font-bold">
+                Which clue proves your accusation?
+              </legend>
+              {evidence.map((item) => (
+                <label
+                  key={item.id}
+                  className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-[#1c2731] p-3"
+                >
+                  <input
+                    type="radio"
+                    name="evidence"
+                    value={item.id}
+                    checked={clue === item.id}
+                    onChange={() => setClue(item.id)}
+                    className="accent-amber-400"
+                  />
+                  {item.title}
+                </label>
+              ))}
+            </fieldset>
+
+            <button
+              className={buttonClass}
+              disabled={!suspect || !clue}
+              onClick={() => setScreen('results')}
+            >
+              LOCK IN ACCUSATION
+            </button>
+
+            <button
+              className="py-2 text-sm text-slate-400 underline"
+              onClick={() => setScreen('investigate')}
+            >
+              Review evidence
+            </button>
+          </section>
+        )}
+
+        {screen === 'results' && (
+          <section className="flex flex-col gap-5">
+            <div className="rounded-2xl border border-amber-500/30 bg-[#1c2731] p-6 text-center">
+              <p className="text-xs tracking-widest text-amber-400">
+                CASE CLOSED
+              </p>
+              <h2 className="mt-3 text-3xl font-black">
+                {isCorrect ? 'Correct Verdict' : 'Incorrect Verdict'}
+              </h2>
+              <div className="my-5 text-5xl font-black text-amber-400">
+                {score}
+                <span className="text-lg text-slate-400"> / 150</span>
+              </div>
+              <p className="text-slate-300">
+                {isCorrect
+                  ? 'You identified the thief.'
+                  : 'The evidence points to a different suspect.'}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-[#1c2731] p-5">
+              <h3 className="mb-3 text-xl font-bold">
+                The Truth
+              </h3>
+              <p className="leading-7 text-slate-300">
+                Nina Brooks stole the watch. She took the emergency
+                office key at 11:39 PM and returned it at 11:44 PM.
+                The security recording directly contradicts her
+                claim that she remained in the waiting hall.
+              </p>
+              <p className="mt-3 leading-7 text-slate-300">
+                Arthur, Mara, and Elias were continuously recorded
+                elsewhere during the theft window.
+              </p>
+            </div>
+
+            <button
+              className={buttonClass}
+              onClick={() => {
+                setScreen('intro');
+                setSuspect('');
+                setClue('');
+                setExpandedEvidence(null);
+                setExpandedSuspect(null);
+              }}
+            >
+              RESTART DEMO
+            </button>
+
+            <p className="text-center text-xs text-slate-500">
+              Development prototype — scores are not saved yet.
+            </p>
+          </section>
+        )}
+
+        <footer className="border-t border-slate-700 pt-3 text-center text-xs text-slate-500">
+          DAILY ALIBI: THE JURY · CASE 001
+        </footer>
       </div>
-      <div className="flex items-center justify-center mt-5">
-        <button
-          className="flex items-center justify-center bg-[#d93900] dark:bg-orange-600 text-white w-14 h-14 text-[2.5em] rounded-full cursor-pointer font-mono leading-none transition-colors hover:bg-[#c23300] dark:hover:bg-orange-700"
-          onClick={decrement}
-          disabled={loading}
-        >
-          -
-        </button>
-        <span className="text-[1.8em] font-medium mx-5 min-w-[50px] text-center leading-none text-gray-900 dark:text-white">
-          {loading ? '...' : count}
-        </span>
-        <button
-          className="flex items-center justify-center bg-[#d93900] dark:bg-orange-600 text-white w-14 h-14 text-[2.5em] rounded-full cursor-pointer font-mono leading-none transition-colors hover:bg-[#c23300] dark:hover:bg-orange-700"
-          onClick={increment}
-          disabled={loading}
-        >
-          +
-        </button>
-      </div>
-      <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 text-[0.8em] text-gray-600 dark:text-gray-400">
-        <button
-          className="cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"
-          onClick={() => navigateTo('https://developers.reddit.com/docs')}
-        >
-          Docs
-        </button>
-        <span className="text-gray-300 dark:text-gray-600">|</span>
-        <button
-          className="cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"
-          onClick={() => navigateTo('https://www.reddit.com/r/Devvit')}
-        >
-          r/Devvit
-        </button>
-        <span className="text-gray-300 dark:text-gray-600">|</span>
-        <button
-          className="cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"
-          onClick={() => navigateTo('https://discord.com/invite/R7yu2wh9Qz')}
-        >
-          Discord
-        </button>
-      </footer>
     </div>
   );
-};
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
