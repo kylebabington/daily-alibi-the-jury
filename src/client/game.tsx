@@ -1,8 +1,14 @@
 
 import './index.css';
 
-import { StrictMode, useState } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import type {
+  CaseResponse,
+  GameErrorResponse,
+  SavedVerdict,
+  VerdictResponse,
+} from '../shared/api';
 
 type Screen = 'intro' | 'investigate' | 'verdict' | 'results';
 type Tab = 'evidence' | 'suspects';
@@ -90,10 +96,96 @@ export function App() {
   const [clue, setClue] = useState('');
   const [expandedEvidence, setExpandedEvidence] = useState<string | null>(null);
   const [expandedSuspect, setExpandedSuspect] = useState<string | null>(null);
+  const [savedVerdict, setSavedVerdict] = useState<SavedVerdict | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const isCorrect = suspect === 'nina';
-  const proofCorrect = isCorrect && clue === 'key-cabinet';
-  const score = (isCorrect ? 100 : 0) + (proofCorrect ? 50 : 0);
+  const isCorrect = savedVerdict?.score !== undefined &&
+    savedVerdict.score >= 100;
+
+  const score = savedVerdict?.score ?? 0;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCase() {
+      try {
+        const response = await fetch('/api/case');
+
+        if (!response.ok) {
+          const failure = await response.json() as GameErrorResponse;
+          throw new Error(failure.message || 'Unable to load case.');
+        }
+
+        const data = await response.json() as CaseResponse;
+
+        if (cancelled) return;
+
+        if (data.verdict) {
+          setSavedVerdict(data.verdict);
+          setSuspect(data.verdict.suspectId);
+          setClue(data.verdict.evidenceId);
+          setScreen('results');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setError(
+            error instanceof Error ? error.message : 'Unable to load case.'
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadCase();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function submitVerdict() {
+    if (!suspect || !clue || submitting || savedVerdict || loading || error) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/verdict', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          caseId: 'case-001',
+          suspectId: suspect,
+          evidenceId: clue,
+        }),
+      });
+
+      if (!response.ok) {
+        const failure = await response.json() as GameErrorResponse;
+        throw new Error(failure.message || 'Unable to submit verdict.');
+      }
+
+      const data = await response.json() as VerdictResponse;
+
+      setSavedVerdict(data.verdict);
+      setSuspect(data.verdict.suspectId);
+      setClue(data.verdict.evidenceId);
+      setScreen('results');
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : 'Unable to submit verdict.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   const buttonClass =
     'w-full rounded-xl bg-amber-400 px-5 py-3 font-bold text-slate-950 transition hover:bg-amber-300 active:scale-[0.98]';
@@ -113,7 +205,29 @@ export function App() {
           </span>
         </header>
 
-        {screen === 'intro' && (
+        {loading && (
+          <div className="rounded-xl bg-[#1c2731] p-5 text-center text-slate-300">
+            Loading your case file...
+          </div>
+        )}
+
+        {error && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-500/40 bg-[#1c2731] p-4"
+          >
+            <p className="font-bold text-red-300">Something went wrong</p>
+            <p className="mt-2 text-sm text-slate-300">{error}</p>
+            <button
+              className="mt-3 text-sm font-bold text-amber-400 underline"
+              onClick={() => window.location.reload()}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && screen === 'intro' && (
           <section className="flex flex-col gap-5">
             <div className="rounded-2xl border border-amber-500/30 bg-[#1c2731] p-5">
               <p className="mb-2 text-xs tracking-widest text-amber-400">
@@ -169,7 +283,7 @@ export function App() {
           </section>
         )}
 
-        {screen === 'investigate' && (
+        {!loading && !error && screen === 'investigate' && (
           <section className="flex flex-col gap-4">
             <div>
               <h2 className="text-2xl font-black">Investigation</h2>
@@ -282,7 +396,7 @@ export function App() {
           </section>
         )}
 
-        {screen === 'verdict' && (
+        {!loading && !error && screen === 'verdict' && (
           <section className="flex flex-col gap-5">
             <div>
               <h2 className="text-2xl font-black">Your Verdict</h2>
@@ -336,11 +450,11 @@ export function App() {
             </fieldset>
 
             <button
-              className={buttonClass}
-              disabled={!suspect || !clue}
-              onClick={() => setScreen('results')}
+              className={`${buttonClass} disabled:cursor-not-allowed disabled:opacity-50`}
+              disabled={!suspect || !clue || submitting}
+              onClick={() => void submitVerdict()}
             >
-              LOCK IN ACCUSATION
+              {submitting ? 'SAVING VERDICT...' : 'LOCK IN ACCUSATION'}
             </button>
 
             <button
@@ -352,7 +466,7 @@ export function App() {
           </section>
         )}
 
-        {screen === 'results' && (
+        {!loading && !error && screen === 'results' && (
           <section className="flex flex-col gap-5">
             <div className="rounded-2xl border border-amber-500/30 bg-[#1c2731] p-6 text-center">
               <p className="text-xs tracking-widest text-amber-400">
@@ -372,6 +486,31 @@ export function App() {
               </p>
             </div>
 
+
+            {savedVerdict && (
+              <div className="rounded-xl border border-slate-700 bg-[#1c2731] p-4">
+                <p className="mb-2 text-xs font-bold tracking-widest text-amber-400">
+                  YOUR OFFICIAL VERDICT
+                </p>
+                <p className="text-sm text-slate-300">
+                  Suspect:{' '}
+                  <span className="font-bold text-white">
+                    {suspects.find((person) => person.id === savedVerdict.suspectId)?.name}
+                  </span>
+                </p>
+                <p className="mt-2 text-sm text-slate-300">
+                  Evidence:{' '}
+                  <span className="font-bold text-white">
+                    {evidence.find((item) => item.id === savedVerdict.evidenceId)?.title}
+                  </span>
+                </p>
+                <p className="mt-3 text-xs text-slate-500">
+                  Submitted: {new Date(savedVerdict.submittedAt).toLocaleString()}
+                </p>
+              </div>
+            )}
+
+
             <div className="rounded-xl bg-[#1c2731] p-5">
               <h3 className="mb-3 text-xl font-bold">
                 The Truth
@@ -388,21 +527,8 @@ export function App() {
               </p>
             </div>
 
-            <button
-              className={buttonClass}
-              onClick={() => {
-                setScreen('intro');
-                setSuspect('');
-                setClue('');
-                setExpandedEvidence(null);
-                setExpandedSuspect(null);
-              }}
-            >
-              RESTART DEMO
-            </button>
-
             <p className="text-center text-xs text-slate-500">
-              Development prototype — scores are not saved yet.
+              Your verdict is saved to your Reddit account for this case.
             </p>
           </section>
         )}

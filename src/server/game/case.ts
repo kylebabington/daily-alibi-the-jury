@@ -13,7 +13,7 @@ export const VALID_EVIDENCE_IDS = [
     'departure-log',
     'platform-camera',
     'signal-repair',
-    'waiting-hall',
+    'hall-camera',
     'key-cabinet',
 ] as const;
 
