@@ -26,7 +26,7 @@ export function isValidIdentifier(
 
 export function isAdvancedVerdictRequest(
     value: unknown
-): value is AdvancedVerdictRequest {
+): value is AdvancedVerdictRequest & Record<string, unknown> {
     if (!isRecord(value)) {
         return false;
     }

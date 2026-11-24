@@ -6,6 +6,7 @@ import {
     createAdvancedSavedVerdict,
     isAdvancedSavedVerdict,
     serializeVerdict,
+    deserializeVerdict,
 } from './verdict.ts';
 
 import {
@@ -174,3 +175,174 @@ void test('rejects invalid verdicts before persistence', () => {
         /Duplicate evidence selections/
     );
 });
+
+
+void test('deserializes an advanced verdict', () => {
+    const verdict = createAdvancedSavedVerdict(
+        ADVANCED_TEST_CASE,
+        createRequest()
+    );
+
+    assert.deepEqual(
+        deserializeVerdict(serializeVerdict(verdict)),
+        verdict
+    );
+});
+
+void test('deserializes an unversioned legacy verdict', () => {
+    const verdict = createLegacyVerdict();
+
+    assert.deepEqual(
+        deserializeVerdict(serializeVerdict(verdict)),
+        {
+            ...verdict,
+            version: 1,
+        }
+    );
+});
+
+void test('deserializes an explicit version 1 verdict', () => {
+    const verdict = createLegacyVerdict();
+
+    verdict.version = 1;
+
+    assert.deepEqual(
+        deserializeVerdict(serializeVerdict(verdict)),
+        verdict
+    );
+});
+
+void test('rejects malformed stored JSON', () => {
+    assert.throws(
+        () => deserializeVerdict('{invalid'),
+        SyntaxError
+    );
+});
+
+void test('rejects a null stored verdict', () => {
+    assert.throws(
+        () => deserializeVerdict('null'),
+        /Invalid stored verdict/
+    );
+});
+
+void test('rejects unsupported verdict versions', () => {
+    const verdict = {
+        ...createLegacyVerdict(),
+        version: 99,
+    };
+
+    assert.throws(
+        () => deserializeVerdict(JSON.stringify(verdict)),
+        /Unsupported verdict version/
+    );
+});
+
+void test('rejects negative stored scores', () => {
+    const verdict = createLegacyVerdict();
+
+    verdict.score = -100;
+
+    assert.throws(
+        () => deserializeVerdict(JSON.stringify(verdict)),
+        /Invalid stored verdict fields/
+    );
+});
+
+void test('rejects invalid stored timestamps', () => {
+    const verdict = createLegacyVerdict();
+
+    verdict.submittedAt = 'invalid-date';
+
+    assert.throws(
+        () => deserializeVerdict(JSON.stringify(verdict)),
+        /Invalid stored verdict fields/
+    );
+});
+
+void test('rejects impossible legacy scores', () => {
+    const verdict = createLegacyVerdict();
+
+    verdict.score = 999;
+
+    assert.throws(
+        () => deserializeVerdict(JSON.stringify(verdict)),
+        /Invalid legacy verdict/
+    );
+});
+
+void test('rejects inconsistent advanced scores', () => {
+    const verdict = createAdvancedSavedVerdict(
+        ADVANCED_TEST_CASE,
+        createRequest()
+    );
+
+    verdict.score = 999;
+
+    assert.throws(
+        () => deserializeVerdict(JSON.stringify(verdict)),
+        /Inconsistent stored score/
+    );
+});
+
+void test('rejects scores exceeding the maximum', () => {
+    const verdict = createAdvancedSavedVerdict(
+        ADVANCED_TEST_CASE,
+        createRequest()
+    );
+
+    verdict.breakdown.maximum = 100;
+
+    assert.throws(
+        () => deserializeVerdict(JSON.stringify(verdict)),
+        /Inconsistent stored score/
+    );
+});
+
+void test('rejects duplicate stored evidence', () => {
+    const verdict = createAdvancedSavedVerdict(
+        ADVANCED_TEST_CASE,
+        createRequest()
+    );
+
+    verdict.evidenceIds = [
+        'clue-a',
+        'clue-a',
+        'clue-a',
+    ];
+
+    assert.throws(
+        () => deserializeVerdict(JSON.stringify(verdict)),
+        /Invalid advanced verdict selections/
+    );
+});
+
+void test('rejects missing score breakdown', () => {
+    const verdict = {
+        ...createAdvancedSavedVerdict(
+            ADVANCED_TEST_CASE,
+            createRequest()
+        ),
+        breakdown: null,
+    };
+
+    assert.throws(
+        () => deserializeVerdict(JSON.stringify(verdict)),
+        /Invalid score breakdown/
+    );
+});
+
+void test('rejects inconsistent breakdown totals', () => {
+    const verdict = createAdvancedSavedVerdict(
+        ADVANCED_TEST_CASE,
+        createRequest()
+    );
+
+    verdict.breakdown.evidence = 0;
+
+    assert.throws(
+        () => deserializeVerdict(JSON.stringify(verdict)),
+        /Inconsistent stored score/
+    );
+});
+
