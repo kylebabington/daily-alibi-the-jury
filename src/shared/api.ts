@@ -36,16 +36,24 @@ export type SavedVerdict = {
   submittedAt: string;
 };
 
+export type CaseSolution = {
+  suspectId: string;
+  evidenceId: string;
+  explanation: string[];
+};
+
 export type CaseResponse = {
   type: 'case';
   caseId: string;
   username: string;
   verdict: SavedVerdict | null;
+  solution: CaseSolution | null;
 };
 
 export type VerdictResponse = {
   type: 'verdict';
   verdict: SavedVerdict;
+  solution: CaseSolution;
   alreadySubmitted: boolean;
 };
 

@@ -5,6 +5,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type {
   CaseResponse,
+  CaseSolution,
   GameErrorResponse,
   SavedVerdict,
   VerdictResponse,
@@ -97,6 +98,7 @@ export function App() {
   const [expandedEvidence, setExpandedEvidence] = useState<string | null>(null);
   const [expandedSuspect, setExpandedSuspect] = useState<string | null>(null);
   const [savedVerdict, setSavedVerdict] = useState<SavedVerdict | null>(null);
+  const [solution, setSolution] = useState<CaseSolution | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +126,7 @@ export function App() {
 
         if (data.verdict) {
           setSavedVerdict(data.verdict);
+          setSolution(data.solution);
           setSuspect(data.verdict.suspectId);
           setClue(data.verdict.evidenceId);
           setScreen('results');
@@ -175,6 +178,7 @@ export function App() {
       const data = await response.json() as VerdictResponse;
 
       setSavedVerdict(data.verdict);
+      setSolution(data.solution);
       setSuspect(data.verdict.suspectId);
       setClue(data.verdict.evidenceId);
       setScreen('results');
@@ -511,21 +515,22 @@ export function App() {
             )}
 
 
-            <div className="rounded-xl bg-[#1c2731] p-5">
-              <h3 className="mb-3 text-xl font-bold">
-                The Truth
-              </h3>
-              <p className="leading-7 text-slate-300">
-                Nina Brooks stole the watch. She took the emergency
-                office key at 11:39 PM and returned it at 11:44 PM.
-                The security recording directly contradicts her
-                claim that she remained in the waiting hall.
-              </p>
-              <p className="mt-3 leading-7 text-slate-300">
-                Arthur, Mara, and Elias were continuously recorded
-                elsewhere during the theft window.
-              </p>
-            </div>
+            {solution && (
+              <div className="rounded-xl bg-[#1c2731] p-5">
+                <h3 className="mb-3 text-xl font-bold">
+                  The Truth
+                </h3>
+
+                {solution.explanation.map((paragraph, index) => (
+                  <p
+                    key={index}
+                    className="mt-3 leading-7 text-slate-300"
+                  >
+                    {paragraph}
+                  </p>
+                ))}
+              </div>
+            )}
 
             <p className="text-center text-xs text-slate-500">
               Your verdict is saved to your Reddit account for this case.

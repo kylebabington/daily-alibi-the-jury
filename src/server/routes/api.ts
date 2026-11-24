@@ -13,6 +13,7 @@ import type {
 
 import {
   CASE_ID,
+  CASE_SOLUTION,
   calculateScore,
   isValidEvidence,
   isValidSuspect,
@@ -107,6 +108,7 @@ api.post('/decrement', async (c) => {
 const VERDICTS_KEY = `daily-alibi:${CASE_ID}:verdicts`;
 
 api.get('/case', async (c) => {
+  c.header('Cache-Control', 'no-store');
   const userId = context.userId;
 
   if (!userId) {
@@ -134,6 +136,7 @@ api.get('/case', async (c) => {
       caseId: CASE_ID,
       username: username ?? 'unknown',
       verdict,
+      solution: verdict ? CASE_SOLUTION : null,
     });
   } catch (error) {
     console.error('Failed to load case:', error);
@@ -148,6 +151,7 @@ api.get('/case', async (c) => {
 });
 
 api.post('/verdict', async (c) => {
+  c.header('Cache-Control', 'no-store');
   const userId = context.userId;
 
   if (!userId) {
@@ -175,6 +179,9 @@ api.post('/verdict', async (c) => {
   }
 
   if (
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body) ||
     body.caseId !== CASE_ID ||
     !isValidSuspect(body.suspectId) ||
     !isValidEvidence(body.evidenceId)
@@ -207,6 +214,7 @@ api.post('/verdict', async (c) => {
       return c.json<VerdictResponse>({
         type: 'verdict',
         verdict,
+        solution: CASE_SOLUTION,
         alreadySubmitted: false,
       });
     }
@@ -220,6 +228,7 @@ api.post('/verdict', async (c) => {
     return c.json<VerdictResponse>({
       type: 'verdict',
       verdict: JSON.parse(saved) as SavedVerdict,
+      solution: CASE_SOLUTION,
       alreadySubmitted: true,
     });
   } catch (error) {
