@@ -3,6 +3,9 @@ import './index.css';
 
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+
+import type { PublicCase } from '../shared/case';
+
 import type {
   CaseResponse,
   CaseSolution,
@@ -14,97 +17,47 @@ import type {
 type Screen = 'intro' | 'investigate' | 'verdict' | 'results';
 type Tab = 'evidence' | 'suspects';
 
-const suspects = [
-  {
-    id: 'arthur',
-    name: 'Arthur Vale',
-    role: 'Station Manager',
-    statement:
-      'I was in the control room reviewing the departure log. I never returned to my office.',
-  },
-  {
-    id: 'mara',
-    name: 'Mara Chen',
-    role: 'Train Conductor',
-    statement:
-      'I was on Platform 2 checking the final train until it departed at 11:45.',
-  },
-  {
-    id: 'elias',
-    name: 'Elias Reed',
-    role: 'Maintenance Technician',
-    statement:
-      'I was repairing the signal cabinet in the east tunnel.',
-  },
-  {
-    id: 'nina',
-    name: 'Nina Brooks',
-    role: 'Passenger',
-    statement:
-      'I was waiting in the main hall. I never went near the manager’s office.',
-  },
-];
-
-const evidence = [
-  {
-    id: 'key-register',
-    title: 'The Key Register',
-    category: 'ACCESS',
-    description:
-      'Only two keys open the manager’s office. Key A remained on Arthur’s secured key ring in the control room. Key B was stored in the emergency cabinet.',
-  },
-  {
-    id: 'departure-log',
-    title: 'The Departure Log',
-    category: 'TIMELINE',
-    description:
-      'Continuous control-room footage places Arthur there from 11:35 PM through 11:45 PM.',
-  },
-  {
-    id: 'platform-camera',
-    title: 'Camera 2B',
-    category: 'SURVEILLANCE',
-    description:
-      'Continuous footage places Mara on Platform 2 from 11:36 PM until the train departed at 11:45 PM.',
-  },
-  {
-    id: 'signal-repair',
-    title: 'The Signal Repair',
-    category: 'MAINTENANCE',
-    description:
-      'Continuous tunnel footage places Elias at the east signal cabinet from 11:34 PM through 11:57 PM.',
-  },
-  {
-    id: 'hall-camera',
-    title: 'The Waiting Hall',
-    category: 'SURVEILLANCE',
-    description:
-      'Nina appears on camera at 11:35 PM and 11:46 PM. The corridor to the office is outside the camera’s view.',
-  },
-  {
-    id: 'key-cabinet',
-    title: 'The Emergency Key',
-    category: 'CRITICAL EVIDENCE',
-    description:
-      'Cabinet footage shows Nina removing Key B at 11:39 PM, returning it at 11:44 PM, and replacing the numbered security seal.',
-  },
-];
-
 export function App() {
+  const [gameCase, setGameCase] = useState<PublicCase | null>(null);
+
   const [screen, setScreen] = useState<Screen>('intro');
   const [tab, setTab] = useState<Tab>('evidence');
+
   const [suspect, setSuspect] = useState('');
   const [clue, setClue] = useState('');
-  const [expandedEvidence, setExpandedEvidence] = useState<string | null>(null);
-  const [expandedSuspect, setExpandedSuspect] = useState<string | null>(null);
-  const [savedVerdict, setSavedVerdict] = useState<SavedVerdict | null>(null);
-  const [solution, setSolution] = useState<CaseSolution | null>(null);
-  const [loading, setLoading] = useState(false);
+
+  const [expandedEvidence, setExpandedEvidence] =
+    useState<string | null>(null);
+
+  const [expandedSuspect, setExpandedSuspect] =
+    useState<string | null>(null);
+
+  const [savedVerdict, setSavedVerdict] =
+    useState<SavedVerdict | null>(null);
+
+  const [solution, setSolution] =
+    useState<CaseSolution | null>(null);
+
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isCorrect = savedVerdict?.score !== undefined &&
-    savedVerdict.score >= 100;
+  const suspects = gameCase?.suspects ?? [];
+  const evidence = gameCase?.evidence ?? [];
+
+  const caseNumber = gameCase
+    ? String(gameCase.number).padStart(3, '0')
+    : '---';
+
+  const isCorrect =
+    savedVerdict !== null &&
+    solution !== null &&
+    savedVerdict.suspectId === solution.suspectId;
+
+  const isEvidenceCorrect =
+    savedVerdict !== null &&
+    solution !== null &&
+    savedVerdict.evidenceId === solution.evidenceId;
 
   const score = savedVerdict?.score ?? 0;
 
@@ -116,13 +69,20 @@ export function App() {
         const response = await fetch('/api/case');
 
         if (!response.ok) {
-          const failure = await response.json() as GameErrorResponse;
-          throw new Error(failure.message || 'Unable to load case.');
+          const failure =
+            await response.json() as GameErrorResponse;
+
+          throw new Error(
+            failure.message || 'Unable to load case.'
+          );
         }
 
-        const data = await response.json() as CaseResponse;
+        const data =
+          await response.json() as CaseResponse;
 
         if (cancelled) return;
+
+        setGameCase(data.publicCase);
 
         if (data.verdict) {
           setSavedVerdict(data.verdict);
@@ -134,7 +94,9 @@ export function App() {
       } catch (error) {
         if (!cancelled) {
           setError(
-            error instanceof Error ? error.message : 'Unable to load case.'
+            error instanceof Error
+              ? error.message
+              : 'Unable to load case.'
           );
         }
       } finally {
@@ -150,7 +112,15 @@ export function App() {
   }, []);
 
   async function submitVerdict() {
-    if (!suspect || !clue || submitting || savedVerdict || loading || error) {
+    if (
+      !gameCase ||
+      !suspect ||
+      !clue ||
+      submitting ||
+      savedVerdict ||
+      loading ||
+      error
+    ) {
       return;
     }
 
@@ -164,18 +134,23 @@ export function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          caseId: 'case-001',
+          caseId: gameCase.id,
           suspectId: suspect,
           evidenceId: clue,
         }),
       });
 
       if (!response.ok) {
-        const failure = await response.json() as GameErrorResponse;
-        throw new Error(failure.message || 'Unable to submit verdict.');
+        const failure =
+          await response.json() as GameErrorResponse;
+
+        throw new Error(
+          failure.message || 'Unable to submit verdict.'
+        );
       }
 
-      const data = await response.json() as VerdictResponse;
+      const data =
+        await response.json() as VerdictResponse;
 
       setSavedVerdict(data.verdict);
       setSolution(data.solution);
@@ -184,7 +159,9 @@ export function App() {
       setScreen('results');
     } catch (error) {
       setError(
-        error instanceof Error ? error.message : 'Unable to submit verdict.'
+        error instanceof Error
+          ? error.message
+          : 'Unable to submit verdict.'
       );
     } finally {
       setSubmitting(false);
@@ -197,20 +174,28 @@ export function App() {
   return (
     <div className="min-h-screen bg-[#101820] px-4 py-5 text-slate-100">
       <div className="mx-auto flex max-w-lg flex-col gap-5">
+
         <header className="flex items-center justify-between border-b border-slate-700 pb-3">
           <div>
             <p className="text-xs font-bold tracking-[0.25em] text-amber-400">
               DAILY ALIBI
             </p>
-            <h1 className="text-xl font-black">THE JURY</h1>
+
+            <h1 className="text-xl font-black">
+              THE JURY
+            </h1>
           </div>
+
           <span className="rounded-lg border border-slate-600 px-3 py-1 text-xs">
-            CASE 001
+            CASE {caseNumber}
           </span>
         </header>
 
         {loading && (
-          <div className="rounded-xl bg-[#1c2731] p-5 text-center text-slate-300">
+          <div
+            role="status"
+            className="rounded-xl bg-[#1c2731] p-5 text-center text-slate-300"
+          >
             Loading your case file...
           </div>
         )}
@@ -220,8 +205,14 @@ export function App() {
             role="alert"
             className="rounded-xl border border-red-500/40 bg-[#1c2731] p-4"
           >
-            <p className="font-bold text-red-300">Something went wrong</p>
-            <p className="mt-2 text-sm text-slate-300">{error}</p>
+            <p className="font-bold text-red-300">
+              Something went wrong
+            </p>
+
+            <p className="mt-2 text-sm text-slate-300">
+              {error}
+            </p>
+
             <button
               className="mt-3 text-sm font-bold text-amber-400 underline"
               onClick={() => window.location.reload()}
@@ -231,32 +222,36 @@ export function App() {
           </div>
         )}
 
-        {!loading && !error && screen === 'intro' && (
+        {!loading && !error && gameCase && screen === 'intro' && (
           <section className="flex flex-col gap-5">
+
             <div className="rounded-2xl border border-amber-500/30 bg-[#1c2731] p-5">
-              <p className="mb-2 text-xs tracking-widest text-amber-400">
-                UNION STATION · 11:42 PM
+              <p className="mb-2 text-xs uppercase tracking-widest text-amber-400">
+                {gameCase.location} {'\u00B7'} {gameCase.time}
               </p>
-              <h2 className="mb-3 text-3xl font-black">
-                LAST TRAIN OUT
+
+              <h2 className="mb-3 text-3xl font-black uppercase">
+                {gameCase.title}
               </h2>
-              <p className="leading-7 text-slate-300">
-                A rare silver pocket watch vanished from the station
-                manager’s locked office.
-              </p>
-              <p className="mt-3 leading-7 text-slate-300">
-                The theft occurred between 11:40 and 11:43 PM.
-                Four people were inside the station.
-              </p>
-              <p className="mt-3 font-semibold text-amber-300">
-                One of them is lying.
-              </p>
+
+              {gameCase.introduction.map((paragraph, index) => (
+                <p
+                  key={index}
+                  className={
+                    index === gameCase.introduction.length - 1
+                      ? 'mt-3 font-semibold text-amber-300'
+                      : 'mt-3 leading-7 text-slate-300'
+                  }
+                >
+                  {paragraph}
+                </p>
+              ))}
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-center">
               {[
-                ['4', 'SUSPECTS'],
-                ['6', 'CLUES'],
+                [String(suspects.length), 'SUSPECTS'],
+                [String(evidence.length), 'CLUES'],
                 ['1', 'CULPRIT'],
               ].map(([number, label]) => (
                 <div
@@ -266,6 +261,7 @@ export function App() {
                   <div className="text-2xl font-black text-amber-400">
                     {number}
                   </div>
+
                   <div className="text-[10px] tracking-wider text-slate-400">
                     {label}
                   </div>
@@ -274,7 +270,7 @@ export function App() {
             </div>
 
             <p className="text-sm text-slate-400">
-              Investigate the evidence. Identify the thief.
+              Investigate the evidence. Identify the culprit.
               Select the clue that proves your accusation.
             </p>
 
@@ -284,13 +280,18 @@ export function App() {
             >
               OPEN CASE FILE
             </button>
+
           </section>
         )}
 
-        {!loading && !error && screen === 'investigate' && (
+        {!loading && !error && gameCase && screen === 'investigate' && (
           <section className="flex flex-col gap-4">
+
             <div>
-              <h2 className="text-2xl font-black">Investigation</h2>
+              <h2 className="text-2xl font-black">
+                Investigation
+              </h2>
+
               <p className="text-sm text-slate-400">
                 Examine the evidence before making your accusation.
               </p>
@@ -301,6 +302,7 @@ export function App() {
                 <button
                   key={item}
                   onClick={() => setTab(item)}
+                  aria-pressed={tab === item}
                   className={`rounded-xl px-4 py-3 font-bold capitalize ${tab === item
                     ? 'bg-amber-400 text-slate-950'
                     : 'bg-[#263440] text-slate-300'
@@ -313,6 +315,7 @@ export function App() {
 
             {tab === 'evidence' && (
               <div className="flex flex-col gap-3">
+
                 {evidence.map((item, index) => (
                   <div
                     key={item.id}
@@ -323,7 +326,9 @@ export function App() {
                       aria-expanded={expandedEvidence === item.id}
                       onClick={() =>
                         setExpandedEvidence(
-                          expandedEvidence === item.id ? null : item.id
+                          expandedEvidence === item.id
+                            ? null
+                            : item.id
                         )
                       }
                     >
@@ -331,13 +336,20 @@ export function App() {
                         <div>
                           <p className="text-xs text-amber-400">
                             EVIDENCE {String(index + 1).padStart(2, '0')}
-                            {' · '}
+                            {' \u00B7 '}
                             {item.category}
                           </p>
-                          <h3 className="mt-1 font-bold">{item.title}</h3>
+
+                          <h3 className="mt-1 font-bold">
+                            {item.title}
+                          </h3>
                         </div>
-                        <span aria-hidden="true" className="text-amber-400">
-                          {expandedEvidence === item.id ? '−' : '+'}
+
+                        <span
+                          aria-hidden="true"
+                          className="text-amber-400"
+                        >
+                          {expandedEvidence === item.id ? '-' : '+'}
                         </span>
                       </div>
                     </button>
@@ -349,11 +361,13 @@ export function App() {
                     )}
                   </div>
                 ))}
+
               </div>
             )}
 
             {tab === 'suspects' && (
               <div className="flex flex-col gap-3">
+
                 {suspects.map((person) => (
                   <div
                     key={person.id}
@@ -364,30 +378,40 @@ export function App() {
                       aria-expanded={expandedSuspect === person.id}
                       onClick={() =>
                         setExpandedSuspect(
-                          expandedSuspect === person.id ? null : person.id
+                          expandedSuspect === person.id
+                            ? null
+                            : person.id
                         )
                       }
                     >
                       <div className="flex justify-between gap-3">
                         <div>
-                          <h3 className="font-bold">{person.name}</h3>
+                          <h3 className="font-bold">
+                            {person.name}
+                          </h3>
+
                           <p className="text-xs text-slate-400">
                             {person.role}
                           </p>
                         </div>
-                        <span aria-hidden="true" className="text-amber-400">
-                          {expandedSuspect === person.id ? '−' : '+'}
+
+                        <span
+                          aria-hidden="true"
+                          className="text-amber-400"
+                        >
+                          {expandedSuspect === person.id ? '-' : '+'}
                         </span>
                       </div>
                     </button>
 
                     {expandedSuspect === person.id && (
                       <p className="border-t border-slate-700 p-4 italic leading-7 text-slate-300">
-                        “{person.statement}”
+                        &ldquo;{person.statement}&rdquo;
                       </p>
                     )}
                   </div>
                 ))}
+
               </div>
             )}
 
@@ -397,22 +421,31 @@ export function App() {
             >
               DELIVER VERDICT
             </button>
+
           </section>
         )}
 
-        {!loading && !error && screen === 'verdict' && (
+        {!loading && !error && gameCase && screen === 'verdict' && (
           <section className="flex flex-col gap-5">
+
             <div>
-              <h2 className="text-2xl font-black">Your Verdict</h2>
+              <h2 className="text-2xl font-black">
+                Your Verdict
+              </h2>
+
               <p className="text-sm text-slate-400">
                 Choose carefully. Your accusation is final.
               </p>
             </div>
 
-            <fieldset className="flex flex-col gap-2">
+            <fieldset
+              disabled={submitting}
+              className="flex flex-col gap-2"
+            >
               <legend className="mb-2 font-bold">
-                Who stole the pocket watch?
+                Who is responsible?
               </legend>
+
               {suspects.map((person) => (
                 <label
                   key={person.id}
@@ -426,15 +459,20 @@ export function App() {
                     onChange={() => setSuspect(person.id)}
                     className="accent-amber-400"
                   />
+
                   {person.name}
                 </label>
               ))}
             </fieldset>
 
-            <fieldset className="flex flex-col gap-2">
+            <fieldset
+              disabled={submitting}
+              className="flex flex-col gap-2"
+            >
               <legend className="mb-2 font-bold">
                 Which clue proves your accusation?
               </legend>
+
               {evidence.map((item) => (
                 <label
                   key={item.id}
@@ -448,6 +486,7 @@ export function App() {
                     onChange={() => setClue(item.id)}
                     className="accent-amber-400"
                   />
+
                   {item.title}
                 </label>
               ))}
@@ -458,65 +497,91 @@ export function App() {
               disabled={!suspect || !clue || submitting}
               onClick={() => void submitVerdict()}
             >
-              {submitting ? 'SAVING VERDICT...' : 'LOCK IN ACCUSATION'}
+              {submitting
+                ? 'SAVING VERDICT...'
+                : 'LOCK IN ACCUSATION'}
             </button>
 
             <button
-              className="py-2 text-sm text-slate-400 underline"
+              disabled={submitting}
+              className="py-2 text-sm text-slate-400 underline disabled:opacity-50"
               onClick={() => setScreen('investigate')}
             >
               Review evidence
             </button>
+
           </section>
         )}
 
-        {!loading && !error && screen === 'results' && (
+        {!loading && !error && gameCase && screen === 'results' && (
           <section className="flex flex-col gap-5">
+
             <div className="rounded-2xl border border-amber-500/30 bg-[#1c2731] p-6 text-center">
               <p className="text-xs tracking-widest text-amber-400">
                 CASE CLOSED
               </p>
+
               <h2 className="mt-3 text-3xl font-black">
-                {isCorrect ? 'Correct Verdict' : 'Incorrect Verdict'}
+                {isCorrect && isEvidenceCorrect
+                  ? 'Perfect Verdict'
+                  : isCorrect
+                    ? 'Correct Suspect'
+                    : 'Incorrect Verdict'}
               </h2>
+
               <div className="my-5 text-5xl font-black text-amber-400">
                 {score}
-                <span className="text-lg text-slate-400"> / 150</span>
+
+                <span className="text-lg text-slate-400">
+                  {' / '}{gameCase.maxScore}
+                </span>
               </div>
+
               <p className="text-slate-300">
-                {isCorrect
-                  ? 'You identified the thief.'
-                  : 'The evidence points to a different suspect.'}
+                {isCorrect && isEvidenceCorrect
+                  ? 'You identified the culprit and the decisive evidence.'
+                  : isCorrect
+                    ? 'You identified the culprit, but missed the decisive evidence.'
+                    : 'The evidence points to a different suspect.'}
               </p>
             </div>
-
 
             {savedVerdict && (
               <div className="rounded-xl border border-slate-700 bg-[#1c2731] p-4">
                 <p className="mb-2 text-xs font-bold tracking-widest text-amber-400">
                   YOUR OFFICIAL VERDICT
                 </p>
+
                 <p className="text-sm text-slate-300">
                   Suspect:{' '}
+
                   <span className="font-bold text-white">
-                    {suspects.find((person) => person.id === savedVerdict.suspectId)?.name}
+                    {suspects.find(
+                      (person) => person.id === savedVerdict.suspectId
+                    )?.name ?? 'Unknown suspect'}
                   </span>
                 </p>
+
                 <p className="mt-2 text-sm text-slate-300">
                   Evidence:{' '}
+
                   <span className="font-bold text-white">
-                    {evidence.find((item) => item.id === savedVerdict.evidenceId)?.title}
+                    {evidence.find(
+                      (item) => item.id === savedVerdict.evidenceId
+                    )?.title ?? 'Unknown evidence'}
                   </span>
                 </p>
+
                 <p className="mt-3 text-xs text-slate-500">
-                  Submitted: {new Date(savedVerdict.submittedAt).toLocaleString()}
+                  Submitted:{' '}
+                  {new Date(savedVerdict.submittedAt).toLocaleString()}
                 </p>
               </div>
             )}
 
-
             {solution && (
               <div className="rounded-xl bg-[#1c2731] p-5">
+
                 <h3 className="mb-3 text-xl font-bold">
                   The Truth
                 </h3>
@@ -529,18 +594,21 @@ export function App() {
                     {paragraph}
                   </p>
                 ))}
+
               </div>
             )}
 
             <p className="text-center text-xs text-slate-500">
               Your verdict is saved to your Reddit account for this case.
             </p>
+
           </section>
         )}
 
         <footer className="border-t border-slate-700 pt-3 text-center text-xs text-slate-500">
-          DAILY ALIBI: THE JURY · CASE 001
+          DAILY ALIBI: THE JURY {'\u00B7'} CASE {caseNumber}
         </footer>
+
       </div>
     </div>
   );
