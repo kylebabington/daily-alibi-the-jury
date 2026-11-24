@@ -1,6 +1,6 @@
 
 import type { PrivateCase } from './case';
-import { CASES } from './registry';
+import { LEGACY_CASES as CASES } from './registry';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

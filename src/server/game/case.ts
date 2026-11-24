@@ -100,3 +100,18 @@ export function calculateScore(
 ): number {
     return scoreCase(CASE_001, suspectId, evidenceId);
 }
+
+export function isAdvancedCase(
+    gameCase: AnyPrivateCase
+): gameCase is AdvancedPrivateCase {
+    return gameCase.public.version === 2;
+}
+
+export function isLegacyCase(
+    gameCase: AnyPrivateCase
+): gameCase is PrivateCase {
+    return (
+        gameCase.public.version === undefined ||
+        gameCase.public.version === 1
+    );
+}
