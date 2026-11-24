@@ -12,12 +12,16 @@ import type {
 } from '../../shared/api';
 
 import {
-  CASE_ID,
-  CASE_SOLUTION,
-  calculateScore,
-  isValidEvidence,
-  isValidSuspect,
+  isCaseSuspect,
+  isCaseEvidence,
+  scoreCase,
 } from '../game/case';
+
+import {
+  getDailyCase,
+  getNextReset,
+  getVerdictsKey,
+} from '../game/daily';
 
 type ErrorResponse = {
   status: 'error';
@@ -105,10 +109,10 @@ api.post('/decrement', async (c) => {
   });
 });
 
-const VERDICTS_KEY = `daily-alibi:${CASE_ID}:verdicts`;
 
 api.get('/case', async (c) => {
   c.header('Cache-Control', 'no-store');
+
   const userId = context.userId;
 
   if (!userId) {
@@ -122,9 +126,14 @@ api.get('/case', async (c) => {
   }
 
   try {
+    const now = new Date();
+    const gameCase = getDailyCase(now);
+    const caseId = gameCase.public.id;
+    const verdictsKey = getVerdictsKey(caseId);
+
     const [username, saved] = await Promise.all([
       reddit.getCurrentUsername(),
-      redis.hGet(VERDICTS_KEY, userId),
+      redis.hGet(verdictsKey, userId),
     ]);
 
     const verdict: SavedVerdict | null = saved
@@ -133,13 +142,16 @@ api.get('/case', async (c) => {
 
     return c.json<CaseResponse>({
       type: 'case',
-      caseId: CASE_ID,
+      caseId,
       username: username ?? 'unknown',
+      publicCase: gameCase.public,
+      nextResetAt: getNextReset(now),
       verdict,
-      solution: verdict ? CASE_SOLUTION : null,
+      solution: verdict ? gameCase.solution : null,
     });
   } catch (error) {
     console.error('Failed to load case:', error);
+
     return c.json<GameErrorResponse>(
       {
         status: 'error',
@@ -152,6 +164,7 @@ api.get('/case', async (c) => {
 
 api.post('/verdict', async (c) => {
   c.header('Cache-Control', 'no-store');
+
   const userId = context.userId;
 
   if (!userId) {
@@ -182,30 +195,61 @@ api.post('/verdict', async (c) => {
     !body ||
     typeof body !== 'object' ||
     Array.isArray(body) ||
-    body.caseId !== CASE_ID ||
-    !isValidSuspect(body.suspectId) ||
-    !isValidEvidence(body.evidenceId)
+    typeof body.caseId !== 'string'
   ) {
     return c.json<GameErrorResponse>(
       {
         status: 'error',
-        message: 'Invalid case, suspect, or evidence selection.',
+        message: 'Invalid verdict request.',
       },
       400
     );
   }
 
   try {
+    const now = new Date();
+    const gameCase = getDailyCase(now);
+    const caseId = gameCase.public.id;
+
+    if (body.caseId !== caseId) {
+      return c.json<GameErrorResponse>(
+        {
+          status: 'error',
+          message: 'The daily case has changed. Reload to investigate the new case.',
+        },
+        409
+      );
+    }
+
+    if (
+      !isCaseSuspect(gameCase, body.suspectId) ||
+      !isCaseEvidence(gameCase, body.evidenceId)
+    ) {
+      return c.json<GameErrorResponse>(
+        {
+          status: 'error',
+          message: 'Invalid suspect or evidence selection.',
+        },
+        400
+      );
+    }
+
+    const verdictsKey = getVerdictsKey(caseId);
+
     const verdict: SavedVerdict = {
-      caseId: CASE_ID,
+      caseId,
       suspectId: body.suspectId,
       evidenceId: body.evidenceId,
-      score: calculateScore(body.suspectId, body.evidenceId),
-      submittedAt: new Date().toISOString(),
+      score: scoreCase(
+        gameCase,
+        body.suspectId,
+        body.evidenceId
+      ),
+      submittedAt: now.toISOString(),
     };
 
     const inserted = await redis.hSetNX(
-      VERDICTS_KEY,
+      verdictsKey,
       userId,
       JSON.stringify(verdict)
     );
@@ -214,21 +258,26 @@ api.post('/verdict', async (c) => {
       return c.json<VerdictResponse>({
         type: 'verdict',
         verdict,
-        solution: CASE_SOLUTION,
+        solution: gameCase.solution,
         alreadySubmitted: false,
       });
     }
 
-    const saved = await redis.hGet(VERDICTS_KEY, userId);
+    const saved = await redis.hGet(
+      verdictsKey,
+      userId
+    );
 
     if (!saved) {
-      throw new Error('Existing verdict could not be retrieved.');
+      throw new Error(
+        'Existing verdict could not be retrieved.'
+      );
     }
 
     return c.json<VerdictResponse>({
       type: 'verdict',
       verdict: JSON.parse(saved) as SavedVerdict,
-      solution: CASE_SOLUTION,
+      solution: gameCase.solution,
       alreadySubmitted: true,
     });
   } catch (error) {

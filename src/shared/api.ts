@@ -1,3 +1,5 @@
+import type { PublicCase } from './case';
+
 export type InitResponse = {
   type: 'init';
   postId: string;
@@ -46,6 +48,8 @@ export type CaseResponse = {
   type: 'case';
   caseId: string;
   username: string;
+  publicCase: PublicCase;
+  nextResetAt: string;
   verdict: SavedVerdict | null;
   solution: CaseSolution | null;
 };

@@ -1,54 +1,82 @@
+
 import type { CaseSolution } from '../../shared/api';
-export const CASE_ID = 'case-001';
+import type { PublicCase } from '../../shared/case';
+import { CASE_001 } from './cases/case-001';
 
-export const VALID_SUSPECT_IDS = [
-    'arthur',
-    'mara',
-    'elias',
-    'nina',
-] as const;
-
-export const VALID_EVIDENCE_IDS = [
-    'key-register',
-    'departure-log',
-    'platform-camera',
-    'signal-repair',
-    'hall-camera',
-    'key-cabinet',
-] as const;
-
-const CORRECT_SUSPECT = 'nina';
-const DECISIVE_EVIDENCE = 'key-cabinet';
-
-export const CASE_SOLUTION: CaseSolution = {
-    suspectId: CORRECT_SUSPECT,
-    evidenceId: DECISIVE_EVIDENCE,
-    explanation: [
-        'Nina Brooks stole the watch. She took the emergency office key at 11:39 PM and returned it at 11:44 PM. The security recording directly contradicts her claim that she remained in the waiting hall.',
-        'Arthur, Mara, and Elias were continuously recorded elsewhere during the theft window.',
-    ],
+export type PrivateCase = {
+    public: PublicCase;
+    solution: CaseSolution;
 };
 
-export function isValidSuspect(value: unknown): value is string {
+// Generic validation
+
+export function isCaseSuspect(
+    gameCase: PrivateCase,
+    value: unknown
+): value is string {
     return (
         typeof value === 'string' &&
-        VALID_SUSPECT_IDS.some((id) => id === value)
+        gameCase.public.suspects.some(
+            (suspect) => suspect.id === value
+        )
     );
 }
 
-export function isValidEvidence(value: unknown): value is string {
+export function isCaseEvidence(
+    gameCase: PrivateCase,
+    value: unknown
+): value is string {
     return (
         typeof value === 'string' &&
-        VALID_EVIDENCE_IDS.some((id) => id === value)
+        gameCase.public.evidence.some(
+            (evidence) => evidence.id === value
+        )
     );
+}
+
+// Generic scoring
+
+export function scoreCase(
+    gameCase: PrivateCase,
+    suspectId: string,
+    evidenceId: string
+): number {
+    const suspectPoints =
+        suspectId === gameCase.solution.suspectId ? 100 : 0;
+
+    const evidencePoints =
+        evidenceId === gameCase.solution.evidenceId ? 50 : 0;
+
+    return suspectPoints + evidencePoints;
+}
+
+// Temporary compatibility exports
+
+export const CASE_ID = CASE_001.public.id;
+
+export const CASE_SOLUTION = CASE_001.solution;
+
+export const VALID_SUSPECT_IDS =
+    CASE_001.public.suspects.map((suspect) => suspect.id);
+
+export const VALID_EVIDENCE_IDS =
+    CASE_001.public.evidence.map((evidence) => evidence.id);
+
+export function isValidSuspect(
+    value: unknown
+): value is string {
+    return isCaseSuspect(CASE_001, value);
+}
+
+export function isValidEvidence(
+    value: unknown
+): value is string {
+    return isCaseEvidence(CASE_001, value);
 }
 
 export function calculateScore(
     suspectId: string,
     evidenceId: string
 ): number {
-    const suspectPoints = suspectId === CORRECT_SUSPECT ? 100 : 0;
-    const evidencePoints = evidenceId === DECISIVE_EVIDENCE ? 50 : 0;
-
-    return suspectPoints + evidencePoints;
+    return scoreCase(CASE_001, suspectId, evidenceId);
 }
