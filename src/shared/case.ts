@@ -1,4 +1,10 @@
 
+import type {
+    InvestigationRules,
+    Motive,
+    ScoringRules,
+} from './investigation';
+
 export type Suspect = {
     id: string;
     name: string;
@@ -13,7 +19,7 @@ export type Evidence = {
     description: string;
 };
 
-export type PublicCase = {
+export type BasePublicCase = {
     id: string;
     number: number;
     title: string;
@@ -24,3 +30,18 @@ export type PublicCase = {
     evidence: Evidence[];
     maxScore: number;
 };
+
+export type LegacyPublicCase = BasePublicCase & {
+    version?: 1;
+};
+
+export type AdvancedPublicCase = BasePublicCase & {
+    version: 2;
+    investigation: InvestigationRules;
+    scoring: ScoringRules;
+    motives: Motive[];
+};
+
+export type PublicCase =
+    | LegacyPublicCase
+    | AdvancedPublicCase;

@@ -1,12 +1,32 @@
 
+
 import type { CaseSolution } from '../../shared/api';
-import type { PublicCase } from '../../shared/case';
+
+import type {
+    LegacyPublicCase,
+    AdvancedPublicCase,
+} from '../../shared/case';
+
+import type {
+    AdvancedCaseSolution,
+} from '../../shared/investigation';
+
 import { CASE_001 } from './cases/case-001';
 
 export type PrivateCase = {
-    public: PublicCase;
+    public: LegacyPublicCase;
     solution: CaseSolution;
 };
+
+export type AdvancedPrivateCase = {
+    public: AdvancedPublicCase;
+    solution: AdvancedCaseSolution;
+};
+
+export type AnyPrivateCase =
+    | PrivateCase
+    | AdvancedPrivateCase;
+
 
 // Generic validation
 
