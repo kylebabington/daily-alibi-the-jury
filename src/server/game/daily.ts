@@ -8,6 +8,7 @@ const LAUNCH_DATE = Date.UTC(2026, 11, 8);
 
 // Keep Case 001 active during development.
 const DEVELOPMENT_MODE = true;
+const DEVELOPMENT_CASE_ID = 'case-002';
 
 export function getUtcDay(now: Date = new Date()): number {
     return Math.floor(now.getTime() / DAY_MS);
@@ -23,7 +24,17 @@ export function getDailyCase(
     }
 
     if (DEVELOPMENT_MODE) {
-        return firstCase;
+        const developmentCase = CASES.find(
+            (item) => item.public.id === DEVELOPMENT_CASE_ID
+        );
+
+        if (!developmentCase) {
+            throw new Error(
+                `Development case not found: ${DEVELOPMENT_CASE_ID}`
+            );
+        }
+
+        return developmentCase;
     }
 
     const launchDay = Math.floor(LAUNCH_DATE / DAY_MS);
