@@ -1,5 +1,11 @@
 import type { PublicCase } from './case';
 
+import type {
+  AdvancedSavedVerdict,
+  AdvancedVerdictRequest,
+  AdvancedCaseSolution,
+} from './investigation';
+
 export type InitResponse = {
   type: 'init';
   postId: string;
@@ -31,6 +37,7 @@ export type VerdictRequest = {
 };
 
 export type SavedVerdict = {
+  version?: 1;
   caseId: string;
   suspectId: string;
   evidenceId: string;
@@ -65,3 +72,15 @@ export type GameErrorResponse = {
   status: 'error';
   message: string;
 };
+
+export type AnySavedVerdict =
+  | SavedVerdict
+  | AdvancedSavedVerdict;
+
+export type AnyVerdictRequest =
+  | VerdictRequest
+  | AdvancedVerdictRequest;
+
+export type AnyCaseSolution =
+  | CaseSolution
+  | AdvancedCaseSolution;
