@@ -1,22 +1,24 @@
 
-import type { PrivateCase } from './case';
-import { LEGACY_CASES as CASES } from './registry';
+import type { AnyPrivateCase } from './case';
+import { CASES } from './registry';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const LAUNCH_DATE = Date.UTC(2026, 11, 8);
 
-// Keep Case 001 active during development.
+// Development configuration
 const DEVELOPMENT_MODE = true;
-const DEVELOPMENT_CASE_ID = 'case-002';
+const DEVELOPMENT_CASE_ID = 'case-003';
 
-export function getUtcDay(now: Date = new Date()): number {
+export function getUtcDay(
+    now: Date = new Date()
+): number {
     return Math.floor(now.getTime() / DAY_MS);
 }
 
 export function getDailyCase(
     now: Date = new Date()
-): PrivateCase {
+): AnyPrivateCase {
     const firstCase = CASES[0];
 
     if (!firstCase) {
@@ -25,7 +27,8 @@ export function getDailyCase(
 
     if (DEVELOPMENT_MODE) {
         const developmentCase = CASES.find(
-            (item) => item.public.id === DEVELOPMENT_CASE_ID
+            (item) =>
+                item.public.id === DEVELOPMENT_CASE_ID
         );
 
         if (!developmentCase) {
@@ -37,7 +40,10 @@ export function getDailyCase(
         return developmentCase;
     }
 
-    const launchDay = Math.floor(LAUNCH_DATE / DAY_MS);
+    const launchDay = Math.floor(
+        LAUNCH_DATE / DAY_MS
+    );
+
     const currentDay = getUtcDay(now);
 
     const daysSinceLaunch = Math.max(
@@ -56,11 +62,13 @@ export function getDailyCase(
 export function getNextReset(
     now: Date = new Date()
 ): string {
-    const nextDay = getUtcDay(now) + 1;
-
-    return new Date(nextDay * DAY_MS).toISOString();
+    return new Date(
+        (getUtcDay(now) + 1) * DAY_MS
+    ).toISOString();
 }
 
-export function getVerdictsKey(caseId: string): string {
+export function getVerdictsKey(
+    caseId: string
+): string {
     return `daily-alibi:${caseId}:verdicts`;
 }
