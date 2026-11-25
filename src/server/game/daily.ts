@@ -8,7 +8,7 @@ const LAUNCH_DATE = Date.UTC(2026, 11, 8);
 
 // Development configuration
 const DEVELOPMENT_MODE = true;
-const DEVELOPMENT_CASE_ID = 'case-003';
+const DEVELOPMENT_CASE_ID = 'case-004';
 
 export function getUtcDay(
     now: Date = new Date()
@@ -71,4 +71,10 @@ export function getVerdictsKey(
     caseId: string
 ): string {
     return `daily-alibi:${caseId}:verdicts`;
+}
+
+export function getProgressKey(
+    caseId: string
+): string {
+    return `daily-alibi:${caseId}:progress`;
 }

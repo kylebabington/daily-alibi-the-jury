@@ -1,7 +1,7 @@
 
 import './index.css';
 
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import type { PublicCase } from '../shared/case';
@@ -27,6 +27,18 @@ import {
   buildVerdictRequest,
   restoreSelections,
 } from './gameplay';
+
+import type {
+  InvestigationProgress,
+} from '../shared/progress';
+
+import {
+  loadInvestigationProgress,
+} from './progress';
+
+import {
+  useInvestigationAutosave,
+} from './hooks/useInvestigationAutosave';
 
 type Screen = 'intro' | 'investigate' | 'verdict' | 'results';
 type Tab = 'evidence' | 'suspects' | 'notebook';
