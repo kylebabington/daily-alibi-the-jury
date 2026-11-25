@@ -23,7 +23,20 @@ import {
   getDailyCase,
   getNextReset,
   getVerdictsKey,
+  getProgressKey,
 } from '../game/daily';
+
+import type {
+  ProgressResponse,
+  SaveProgressResponse,
+} from '../../shared/progress';
+
+import {
+  createSavedProgress,
+  deserializeProgress,
+  serializeProgress,
+  validateProgress,
+} from '../game/progress';
 
 type ErrorResponse = {
   status: 'error';
@@ -289,6 +302,181 @@ api.post('/verdict', async (c) => {
     );
   }
 });
+
+
+api.get('/progress', async (c) => {
+  c.header('Cache-Control', 'no-store');
+
+  const userId = context.userId;
+
+  if (!userId) {
+    return c.json<GameErrorResponse>(
+      {
+        status: 'error',
+        message: 'Sign in to retrieve your investigation.',
+      },
+      401
+    );
+  }
+
+  try {
+    const gameCase = getDailyCase();
+    const caseId = gameCase.public.id;
+
+    const [savedVerdict, savedProgress] =
+      await Promise.all([
+        redis.hGet(
+          getVerdictsKey(caseId),
+          userId
+        ),
+        redis.hGet(
+          getProgressKey(caseId),
+          userId
+        ),
+      ]);
+
+    // A completed verdict always takes priority.
+    if (savedVerdict != null) {
+      return c.json<ProgressResponse>({
+        type: 'progress',
+        progress: null,
+      });
+    }
+
+    const progress =
+      savedProgress == null
+        ? null
+        : deserializeProgress(
+          gameCase.public,
+          savedProgress
+        );
+
+    return c.json<ProgressResponse>({
+      type: 'progress',
+      progress,
+    });
+  } catch (error) {
+    console.error(
+      'Failed to retrieve investigation progress:',
+      error
+    );
+
+    return c.json<GameErrorResponse>(
+      {
+        status: 'error',
+        message: 'Unable to retrieve your investigation.',
+      },
+      500
+    );
+  }
+});
+
+
+api.post('/progress', async (c) => {
+  c.header('Cache-Control', 'no-store');
+
+  const userId = context.userId;
+
+  if (!userId) {
+    return c.json<GameErrorResponse>(
+      {
+        status: 'error',
+        message: 'Sign in to save your investigation.',
+      },
+      401
+    );
+  }
+
+  let body: unknown;
+
+  try {
+    const raw = await c.req.text();
+
+    if (
+      new TextEncoder().encode(raw).byteLength >
+      65536
+    ) {
+      return c.json<GameErrorResponse>(
+        {
+          status: 'error',
+          message: 'Investigation progress is too large.',
+        },
+        413
+      );
+    }
+
+    body = JSON.parse(raw) as unknown;
+  } catch {
+    return c.json<GameErrorResponse>(
+      {
+        status: 'error',
+        message: 'Invalid JSON request.',
+      },
+      400
+    );
+  }
+
+  try {
+    const gameCase = getDailyCase();
+    const caseId = gameCase.public.id;
+
+    if (!validateProgress(gameCase.public, body)) {
+      return c.json<GameErrorResponse>(
+        {
+          status: 'error',
+          message: 'Invalid investigation progress.',
+        },
+        400
+      );
+    }
+
+    const savedVerdict = await redis.hGet(
+      getVerdictsKey(caseId),
+      userId
+    );
+
+    if (savedVerdict != null) {
+      return c.json<GameErrorResponse>(
+        {
+          status: 'error',
+          message: 'This investigation is already complete.',
+        },
+        409
+      );
+    }
+
+    const progress = createSavedProgress(
+      gameCase.public,
+      body
+    );
+
+    await redis.hSet(
+      getProgressKey(caseId),
+      {
+        [userId]: serializeProgress(progress),
+      }
+    );
+
+    return c.json<SaveProgressResponse>({
+      type: 'progress-saved',
+      updatedAt: progress.updatedAt,
+    });
+  } catch (error) {
+    console.error(
+      'Failed to save investigation progress:',
+      error
+    );
+
+    return c.json<GameErrorResponse>(
+      {
+        status: 'error',
+        message: 'Unable to save your investigation.',
+      },
+      500
+    );
+  }
+});
+
 
 
 api.post('/decrement', async (c) => {

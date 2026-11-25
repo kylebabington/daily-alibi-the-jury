@@ -72,3 +72,9 @@ export function getVerdictsKey(
 ): string {
     return `daily-alibi:${caseId}:verdicts`;
 }
+
+export function getProgressKey(
+    caseId: string
+): string {
+    return `daily-alibi:${caseId}:progress`;
+}

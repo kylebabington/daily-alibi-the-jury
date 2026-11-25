@@ -1,10 +1,13 @@
 
 import './index.css';
 
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import type { PublicCase } from '../shared/case';
+import type { DetectiveNotebook as NotebookData } from '../shared/notebook';
+import { DetectiveNotebook } from './components/DetectiveNotebook';
+import { createNotebook, getSuspectStatus, togglePinnedEvidence } from './notebook';
 
 import type {
   AnyCaseResponse,
@@ -25,14 +28,27 @@ import {
   restoreSelections,
 } from './gameplay';
 
+import type {
+  InvestigationProgress,
+} from '../shared/progress';
+
+import {
+  loadInvestigationProgress,
+} from './progress';
+
+import {
+  useInvestigationAutosave,
+} from './hooks/useInvestigationAutosave';
+
 type Screen = 'intro' | 'investigate' | 'verdict' | 'results';
-type Tab = 'evidence' | 'suspects';
+type Tab = 'evidence' | 'suspects' | 'notebook';
 
 export function App() {
   const [gameCase, setGameCase] = useState<PublicCase | null>(null);
 
   const [screen, setScreen] = useState<Screen>('intro');
   const [tab, setTab] = useState<Tab>('evidence');
+  const [notebook, setNotebook] = useState<NotebookData | null>(null);
 
   const [selections, setSelections] =
     useState(createEmptySelections);
@@ -112,6 +128,7 @@ export function App() {
         if (cancelled) return;
 
         setGameCase(data.publicCase);
+        setNotebook(createNotebook(data.publicCase.id));
 
         if (data.verdict) {
           setSavedVerdict(data.verdict);
@@ -350,10 +367,11 @@ export function App() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              {(['evidence', 'suspects'] as const).map((item) => (
+            <div className="grid grid-cols-3 gap-2">
+              {(['evidence', 'suspects', 'notebook'] as const).map((item) => (
                 <button
                   key={item}
+                  type="button"
                   onClick={() => setTab(item)}
                   aria-pressed={tab === item}
                   className={`rounded-xl px-4 py-3 font-bold capitalize ${tab === item
@@ -412,6 +430,20 @@ export function App() {
                         {item.description}
                       </p>
                     )}
+                    {notebook && (
+                      <div className="border-t border-slate-700 px-4 pb-3 pt-2">
+                        <button
+                          type="button"
+                          aria-pressed={notebook.pinnedEvidenceIds.includes(item.id)}
+                          onClick={() => setNotebook((current) => current
+                            ? togglePinnedEvidence(current, gameCase, item.id)
+                            : current)}
+                          className="rounded-lg border border-amber-500/40 px-3 py-2 text-xs font-semibold text-amber-400 hover:bg-amber-400/10"
+                        >
+                          {notebook.pinnedEvidenceIds.includes(item.id) ? 'Remove bookmark' : 'Bookmark clue'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
 
@@ -446,6 +478,15 @@ export function App() {
                           <p className="text-xs text-slate-400">
                             {person.role}
                           </p>
+                          {notebook && getSuspectStatus(notebook, person.id) !== 'unmarked' && (
+                            <p className="mt-1 text-xs font-semibold text-amber-400">
+                              {getSuspectStatus(notebook, person.id) === 'ruled-out'
+                                ? 'Ruled out'
+                                : getSuspectStatus(notebook, person.id) === 'suspicious'
+                                  ? 'Suspicious'
+                                  : 'Investigate'}
+                            </p>
+                          )}
                         </div>
 
                         <span
@@ -466,6 +507,14 @@ export function App() {
                 ))}
 
               </div>
+            )}
+
+            {tab === 'notebook' && notebook && (
+              <DetectiveNotebook
+                gameCase={gameCase}
+                notebook={notebook}
+                onChange={setNotebook}
+              />
             )}
 
             <button
