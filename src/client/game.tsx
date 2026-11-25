@@ -7,12 +7,23 @@ import { createRoot } from 'react-dom/client';
 import type { PublicCase } from '../shared/case';
 
 import type {
-  CaseResponse,
-  CaseSolution,
+  AnyCaseResponse,
+  AnyCaseSolution,
+  AnySavedVerdict,
+  AnyVerdictResponse,
   GameErrorResponse,
-  SavedVerdict,
-  VerdictResponse,
 } from '../shared/api';
+
+import {
+  isAdvancedPublicCase,
+  createEmptySelections,
+  getRequiredEvidenceCount,
+  requiresMotive,
+  toggleEvidence,
+  canSubmitVerdict,
+  buildVerdictRequest,
+  restoreSelections,
+} from './gameplay';
 
 type Screen = 'intro' | 'investigate' | 'verdict' | 'results';
 type Tab = 'evidence' | 'suspects';
@@ -23,8 +34,8 @@ export function App() {
   const [screen, setScreen] = useState<Screen>('intro');
   const [tab, setTab] = useState<Tab>('evidence');
 
-  const [suspect, setSuspect] = useState('');
-  const [clue, setClue] = useState('');
+  const [selections, setSelections] =
+    useState(createEmptySelections);
 
   const [expandedEvidence, setExpandedEvidence] =
     useState<string | null>(null);
@@ -33,10 +44,10 @@ export function App() {
     useState<string | null>(null);
 
   const [savedVerdict, setSavedVerdict] =
-    useState<SavedVerdict | null>(null);
+    useState<AnySavedVerdict | null>(null);
 
   const [solution, setSolution] =
-    useState<CaseSolution | null>(null);
+    useState<AnyCaseSolution | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -49,17 +60,35 @@ export function App() {
     ? String(gameCase.number).padStart(3, '0')
     : '---';
 
+  const advancedCase =
+    gameCase && isAdvancedPublicCase(gameCase)
+      ? gameCase
+      : null;
+
+  const requiredEvidenceCount = gameCase
+    ? getRequiredEvidenceCount(gameCase)
+    : 1;
+
+  const motiveRequired = gameCase
+    ? requiresMotive(gameCase)
+    : false;
+
+  const readyToSubmit =
+    gameCase !== null &&
+    canSubmitVerdict(gameCase, selections);
+
   const isCorrect =
     savedVerdict !== null &&
     solution !== null &&
     savedVerdict.suspectId === solution.suspectId;
 
-  const isEvidenceCorrect =
-    savedVerdict !== null &&
-    solution !== null &&
-    savedVerdict.evidenceId === solution.evidenceId;
-
   const score = savedVerdict?.score ?? 0;
+
+  const isPerfect =
+    savedVerdict !== null &&
+    gameCase !== null &&
+    score === gameCase.maxScore;
+
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +107,7 @@ export function App() {
         }
 
         const data =
-          await response.json() as CaseResponse;
+          await response.json() as AnyCaseResponse;
 
         if (cancelled) return;
 
@@ -87,8 +116,9 @@ export function App() {
         if (data.verdict) {
           setSavedVerdict(data.verdict);
           setSolution(data.solution);
-          setSuspect(data.verdict.suspectId);
-          setClue(data.verdict.evidenceId);
+          setSelections(
+            restoreSelections(data.verdict)
+          );
           setScreen('results');
         }
       } catch (error) {
@@ -114,12 +144,10 @@ export function App() {
   async function submitVerdict() {
     if (
       !gameCase ||
-      !suspect ||
-      !clue ||
+      !readyToSubmit ||
       submitting ||
       savedVerdict ||
-      loading ||
-      error
+      loading
     ) {
       return;
     }
@@ -128,16 +156,17 @@ export function App() {
     setError(null);
 
     try {
+      const request = buildVerdictRequest(
+        gameCase,
+        selections
+      );
+
       const response = await fetch('/api/verdict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          caseId: gameCase.id,
-          suspectId: suspect,
-          evidenceId: clue,
-        }),
+        body: JSON.stringify(request),
       });
 
       if (!response.ok) {
@@ -150,12 +179,13 @@ export function App() {
       }
 
       const data =
-        await response.json() as VerdictResponse;
+        await response.json() as AnyVerdictResponse;
 
       setSavedVerdict(data.verdict);
       setSolution(data.solution);
-      setSuspect(data.verdict.suspectId);
-      setClue(data.verdict.evidenceId);
+      setSelections(
+        restoreSelections(data.verdict)
+      );
       setScreen('results');
     } catch (error) {
       setError(
@@ -167,6 +197,7 @@ export function App() {
       setSubmitting(false);
     }
   }
+
 
   const buttonClass =
     'w-full rounded-xl bg-amber-400 px-5 py-3 font-bold text-slate-950 transition hover:bg-amber-300 active:scale-[0.98]';
@@ -234,6 +265,24 @@ export function App() {
                 {gameCase.title}
               </h2>
 
+              {advancedCase && (
+                <div className="mb-4 flex flex-wrap gap-2">
+
+                  <span className="rounded-lg border border-amber-500/40 bg-amber-400/10 px-3 py-1 text-xs font-bold uppercase text-amber-400">
+                    {advancedCase.investigation.difficulty}
+                  </span>
+
+                  <span className="rounded-lg bg-[#263440] px-3 py-1 text-xs text-slate-300">
+                    ~{advancedCase.investigation.estimatedMinutes} min
+                  </span>
+
+                  <span className="rounded-lg bg-[#263440] px-3 py-1 text-xs text-slate-300">
+                    {gameCase.maxScore} points
+                  </span>
+
+                </div>
+              )}
+
               {gameCase.introduction.map((paragraph, index) => (
                 <p
                   key={index}
@@ -271,7 +320,11 @@ export function App() {
 
             <p className="text-sm text-slate-400">
               Investigate the evidence. Identify the culprit.
-              Select the clue that proves your accusation.
+              {' '}
+              {motiveRequired && 'Determine their motive. '}
+              {requiredEvidenceCount === 1
+                ? 'Select the clue that proves your accusation.'
+                : `Build your case by selecting exactly ${requiredEvidenceCount} pieces of evidence.`}
             </p>
 
             <button
@@ -425,7 +478,8 @@ export function App() {
           </section>
         )}
 
-        {!loading && !error && gameCase && screen === 'verdict' && (
+
+        {!loading && gameCase && screen === 'verdict' && (
           <section className="flex flex-col gap-5">
 
             <div>
@@ -449,52 +503,187 @@ export function App() {
               {suspects.map((person) => (
                 <label
                   key={person.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-[#1c2731] p-3"
+                  className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 ${selections.suspectId === person.id
+                    ? 'border-amber-400 bg-amber-400/10'
+                    : 'border-slate-700 bg-[#1c2731]'
+                    }`}
                 >
                   <input
                     type="radio"
                     name="suspect"
                     value={person.id}
-                    checked={suspect === person.id}
-                    onChange={() => setSuspect(person.id)}
+                    checked={selections.suspectId === person.id}
+                    onChange={() =>
+                      setSelections((previous) => ({
+                        ...previous,
+                        suspectId: person.id,
+                      }))
+                    }
                     className="accent-amber-400"
                   />
 
-                  {person.name}
+                  <div>
+                    <p className="font-bold">{person.name}</p>
+                    <p className="text-xs text-slate-400">
+                      {person.role}
+                    </p>
+                  </div>
                 </label>
               ))}
             </fieldset>
+
+            {advancedCase && motiveRequired && (
+              <fieldset
+                disabled={submitting}
+                className="flex flex-col gap-2"
+              >
+                <legend className="mb-2 font-bold">
+                  What was the motive?
+                </legend>
+
+                {advancedCase.motives.map((motive) => (
+                  <label
+                    key={motive.id}
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${selections.motiveId === motive.id
+                      ? 'border-amber-400 bg-amber-400/10'
+                      : 'border-slate-700 bg-[#1c2731]'
+                      }`}
+                  >
+                    <input
+                      type="radio"
+                      name="motive"
+                      value={motive.id}
+                      checked={selections.motiveId === motive.id}
+                      onChange={() =>
+                        setSelections((previous) => ({
+                          ...previous,
+                          motiveId: motive.id,
+                        }))
+                      }
+                      className="mt-1 accent-amber-400"
+                    />
+
+                    <div>
+                      <p className="font-bold">
+                        {motive.title}
+                      </p>
+
+                      <p className="mt-1 text-sm text-slate-400">
+                        {motive.description}
+                      </p>
+                    </div>
+                  </label>
+                ))}
+              </fieldset>
+            )}
 
             <fieldset
               disabled={submitting}
               className="flex flex-col gap-2"
             >
               <legend className="mb-2 font-bold">
-                Which clue proves your accusation?
+                {requiredEvidenceCount === 1
+                  ? 'Which clue proves your accusation?'
+                  : 'Build your evidence chain'}
               </legend>
 
-              {evidence.map((item) => (
-                <label
-                  key={item.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-[#1c2731] p-3"
-                >
-                  <input
-                    type="radio"
-                    name="evidence"
-                    value={item.id}
-                    checked={clue === item.id}
-                    onChange={() => setClue(item.id)}
-                    className="accent-amber-400"
-                  />
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">
+                  Select exactly {requiredEvidenceCount}
+                </span>
 
-                  {item.title}
-                </label>
-              ))}
+                <span
+                  aria-live="polite"
+                  className="font-bold text-amber-400"
+                >
+                  {selections.evidenceIds.length}
+                  {' / '}
+                  {requiredEvidenceCount}
+                </span>
+              </div>
+
+              <div className="h-2 overflow-hidden rounded-full bg-slate-700">
+                <div
+                  className="h-full rounded-full bg-amber-400 transition-all"
+                  style={{
+                    width: `${selections.evidenceIds.length /
+                      requiredEvidenceCount * 100
+                      }%`,
+                  }}
+                />
+              </div>
+
+              {evidence.map((item) => {
+                const selected =
+                  selections.evidenceIds.includes(item.id);
+
+                const limitReached =
+                  requiredEvidenceCount > 1 &&
+                  selections.evidenceIds.length >=
+                  requiredEvidenceCount &&
+                  !selected;
+
+                return (
+                  <label
+                    key={item.id}
+                    className={`flex items-center gap-3 rounded-xl border p-3 ${selected
+                      ? 'border-amber-400 bg-amber-400/10'
+                      : 'border-slate-700 bg-[#1c2731]'
+                      } ${limitReached
+                        ? 'cursor-not-allowed opacity-50'
+                        : 'cursor-pointer'
+                      }`}
+                  >
+                    <input
+                      type={
+                        requiredEvidenceCount === 1
+                          ? 'radio'
+                          : 'checkbox'
+                      }
+                      name="evidence"
+                      value={item.id}
+                      checked={selected}
+                      disabled={limitReached}
+                      onChange={() =>
+                        setSelections((previous) => ({
+                          ...previous,
+                          evidenceIds: toggleEvidence(
+                            previous.evidenceIds,
+                            item.id,
+                            requiredEvidenceCount
+                          ),
+                        }))
+                      }
+                      className="accent-amber-400"
+                    />
+
+                    <div>
+                      <p className="font-bold">{item.title}</p>
+
+                      <p className="text-xs text-slate-400">
+                        {item.category}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })}
             </fieldset>
+
+            <div className="rounded-xl bg-[#1c2731] p-4">
+              <div className="flex justify-between">
+                <span className="text-sm text-slate-400">
+                  Maximum possible score
+                </span>
+
+                <span className="font-black text-amber-400">
+                  {gameCase.maxScore}
+                </span>
+              </div>
+            </div>
 
             <button
               className={`${buttonClass} disabled:cursor-not-allowed disabled:opacity-50`}
-              disabled={!suspect || !clue || submitting}
+              disabled={!readyToSubmit || submitting}
               onClick={() => void submitVerdict()}
             >
               {submitting
@@ -505,13 +694,17 @@ export function App() {
             <button
               disabled={submitting}
               className="py-2 text-sm text-slate-400 underline disabled:opacity-50"
-              onClick={() => setScreen('investigate')}
+              onClick={() => {
+                setError(null);
+                setScreen('investigate');
+              }}
             >
               Review evidence
             </button>
 
           </section>
         )}
+
 
         {!loading && !error && gameCase && screen === 'results' && (
           <section className="flex flex-col gap-5">
@@ -522,7 +715,7 @@ export function App() {
               </p>
 
               <h2 className="mt-3 text-3xl font-black">
-                {isCorrect && isEvidenceCorrect
+                {isPerfect
                   ? 'Perfect Verdict'
                   : isCorrect
                     ? 'Correct Suspect'
@@ -538,44 +731,130 @@ export function App() {
               </div>
 
               <p className="text-slate-300">
-                {isCorrect && isEvidenceCorrect
-                  ? 'You identified the culprit and the decisive evidence.'
+                {isPerfect
+                  ? 'Your investigation was flawless.'
                   : isCorrect
-                    ? 'You identified the culprit, but missed the decisive evidence.'
+                    ? 'You identified the culprit, but your investigation was incomplete.'
                     : 'The evidence points to a different suspect.'}
               </p>
             </div>
 
+            {savedVerdict?.version === 2 && advancedCase && (
+              <div className="rounded-xl border border-slate-700 bg-[#1c2731] p-4">
+
+                <h3 className="mb-4 font-bold">
+                  Investigation Breakdown
+                </h3>
+
+                {[
+                  {
+                    label: 'Suspect',
+                    earned: savedVerdict.breakdown.suspect,
+                    maximum: advancedCase.scoring.suspectPoints,
+                  },
+                  ...(motiveRequired
+                    ? [{
+                      label: 'Motive',
+                      earned: savedVerdict.breakdown.motive,
+                      maximum: advancedCase.scoring.motivePoints,
+                    }]
+                    : []),
+                  {
+                    label: 'Evidence',
+                    earned: savedVerdict.breakdown.evidence,
+                    maximum:
+                      advancedCase.scoring.evidencePointsPerItem *
+                      requiredEvidenceCount,
+                  },
+                ].map((item) => (
+                  <div key={item.label} className="mb-4">
+
+                    <div className="mb-2 flex justify-between text-sm">
+                      <span>{item.label}</span>
+
+                      <span className="font-bold text-amber-400">
+                        {item.earned} / {item.maximum}
+                      </span>
+                    </div>
+
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-700">
+                      <div
+                        className="h-full rounded-full bg-amber-400"
+                        style={{
+                          width: `${item.maximum > 0
+                            ? item.earned / item.maximum * 100
+                            : 0
+                            }%`,
+                        }}
+                      />
+                    </div>
+
+                  </div>
+                ))}
+
+              </div>
+            )}
+
             {savedVerdict && (
               <div className="rounded-xl border border-slate-700 bg-[#1c2731] p-4">
-                <p className="mb-2 text-xs font-bold tracking-widest text-amber-400">
+
+                <p className="mb-4 text-xs font-bold tracking-widest text-amber-400">
                   YOUR OFFICIAL VERDICT
                 </p>
 
-                <p className="text-sm text-slate-300">
-                  Suspect:{' '}
-
-                  <span className="font-bold text-white">
-                    {suspects.find(
-                      (person) => person.id === savedVerdict.suspectId
-                    )?.name ?? 'Unknown suspect'}
-                  </span>
+                <p className="text-sm text-slate-400">
+                  Accused suspect
                 </p>
 
-                <p className="mt-2 text-sm text-slate-300">
-                  Evidence:{' '}
+                <p className="font-bold text-white">
+                  {suspects.find(
+                    (person) =>
+                      person.id === savedVerdict.suspectId
+                  )?.name ?? 'Unknown suspect'}
+                </p>
 
-                  <span className="font-bold text-white">
+                {savedVerdict.version === 2 && motiveRequired && (
+                  <div className="mt-4">
+
+                    <p className="text-sm text-slate-400">
+                      Selected motive
+                    </p>
+
+                    <p className="font-bold text-white">
+                      {advancedCase?.motives.find(
+                        (motive) =>
+                          motive.id === savedVerdict.motiveId
+                      )?.title ?? 'Unknown motive'}
+                    </p>
+
+                  </div>
+                )}
+
+                <p className="mb-2 mt-4 text-sm text-slate-400">
+                  Selected evidence
+                </p>
+
+                {(savedVerdict.version === 2
+                  ? savedVerdict.evidenceIds
+                  : [savedVerdict.evidenceId]
+                ).map((evidenceId) => (
+                  <div
+                    key={evidenceId}
+                    className="mb-2 rounded-lg bg-[#263440] p-3 text-sm font-semibold"
+                  >
                     {evidence.find(
-                      (item) => item.id === savedVerdict.evidenceId
+                      (item) => item.id === evidenceId
                     )?.title ?? 'Unknown evidence'}
-                  </span>
+                  </div>
+                ))}
+
+                <p className="mt-4 text-xs text-slate-500">
+                  Submitted:{' '}
+                  {new Date(
+                    savedVerdict.submittedAt
+                  ).toLocaleString()}
                 </p>
 
-                <p className="mt-3 text-xs text-slate-500">
-                  Submitted:{' '}
-                  {new Date(savedVerdict.submittedAt).toLocaleString()}
-                </p>
               </div>
             )}
 
@@ -604,6 +883,7 @@ export function App() {
 
           </section>
         )}
+
 
         <footer className="border-t border-slate-700 pt-3 text-center text-xs text-slate-500">
           DAILY ALIBI: THE JURY {'\u00B7'} CASE {caseNumber}
