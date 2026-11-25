@@ -11,7 +11,7 @@ import type {
     AdvancedCaseSolution,
 } from '../../shared/investigation';
 
-import { CASE_001 } from './cases/case-001';
+import { CASE_001 } from './cases/case-001.ts';
 
 export type PrivateCase = {
     public: LegacyPublicCase;

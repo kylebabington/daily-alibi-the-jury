@@ -4,18 +4,20 @@ import type {
   DecrementResponse,
   IncrementResponse,
   InitResponse,
-  CaseResponse,
   GameErrorResponse,
-  SavedVerdict,
-  VerdictRequest,
-  VerdictResponse,
+  AnyCaseResponse,
+  AnyVerdictResponse,
 } from '../../shared/api';
 
+import { isAdvancedCase } from '../game/case';
+
 import {
-  isCaseSuspect,
-  isCaseEvidence,
-  scoreCase,
-} from '../game/case';
+  createSavedVerdict,
+  readSavedVerdict,
+  SubmissionError,
+} from '../game/submission';
+
+import { serializeVerdict } from '../game/verdict';
 
 import {
   getDailyCase,
@@ -30,11 +32,15 @@ type ErrorResponse = {
 
 export const api = new Hono();
 
+
 api.get('/init', async (c) => {
   const { postId } = context;
 
   if (!postId) {
-    console.error('API Init Error: postId not found in devvit context');
+    console.error(
+      'API Init Error: postId not found in devvit context'
+    );
+
     return c.json<ErrorResponse>(
       {
         status: 'error',
@@ -52,18 +58,21 @@ api.get('/init', async (c) => {
 
     return c.json<InitResponse>({
       type: 'init',
-      postId: postId,
+      postId,
       count: count ? parseInt(count) : 0,
       username: username ?? 'anonymous',
     });
   } catch (error) {
-    console.error(`API Init Error for post ${postId}:`, error);
-    let errorMessage = 'Unknown error during initialization';
-    if (error instanceof Error) {
-      errorMessage = `Initialization failed: ${error.message}`;
-    }
+    console.error(
+      `API Init Error for post ${postId}:`,
+      error
+    );
+
     return c.json<ErrorResponse>(
-      { status: 'error', message: errorMessage },
+      {
+        status: 'error',
+        message: 'Initialization failed.',
+      },
       400
     );
   }
@@ -71,6 +80,7 @@ api.get('/init', async (c) => {
 
 api.post('/increment', async (c) => {
   const { postId } = context;
+
   if (!postId) {
     return c.json<ErrorResponse>(
       {
@@ -82,6 +92,7 @@ api.post('/increment', async (c) => {
   }
 
   const count = await redis.incrBy('count', 1);
+
   return c.json<IncrementResponse>({
     count,
     postId,
@@ -89,25 +100,6 @@ api.post('/increment', async (c) => {
   });
 });
 
-api.post('/decrement', async (c) => {
-  const { postId } = context;
-  if (!postId) {
-    return c.json<ErrorResponse>(
-      {
-        status: 'error',
-        message: 'postId is required',
-      },
-      400
-    );
-  }
-
-  const count = await redis.incrBy('count', -1);
-  return c.json<DecrementResponse>({
-    count,
-    postId,
-    type: 'decrement',
-  });
-});
 
 
 api.get('/case', async (c) => {
@@ -136,16 +128,37 @@ api.get('/case', async (c) => {
       redis.hGet(verdictsKey, userId),
     ]);
 
-    const verdict: SavedVerdict | null = saved
-      ? (JSON.parse(saved) as SavedVerdict)
-      : null;
+    const verdict = saved == null
+      ? null
+      : readSavedVerdict(gameCase, saved);
 
-    return c.json<CaseResponse>({
-      type: 'case',
+    const common = {
+      type: 'case' as const,
       caseId,
       username: username ?? 'unknown',
-      publicCase: gameCase.public,
       nextResetAt: getNextReset(now),
+    };
+
+    if (isAdvancedCase(gameCase)) {
+      if (verdict && verdict.version !== 2) {
+        throw new Error('Unexpected verdict version.');
+      }
+
+      return c.json<AnyCaseResponse>({
+        ...common,
+        publicCase: gameCase.public,
+        verdict,
+        solution: verdict ? gameCase.solution : null,
+      });
+    }
+
+    if (verdict?.version === 2) {
+      throw new Error('Unexpected verdict version.');
+    }
+
+    return c.json<AnyCaseResponse>({
+      ...common,
+      publicCase: gameCase.public,
       verdict,
       solution: verdict ? gameCase.solution : null,
     });
@@ -162,6 +175,8 @@ api.get('/case', async (c) => {
   }
 });
 
+
+
 api.post('/verdict', async (c) => {
   c.header('Cache-Control', 'no-store');
 
@@ -177,10 +192,10 @@ api.post('/verdict', async (c) => {
     );
   }
 
-  let body: VerdictRequest;
+  let body: unknown;
 
   try {
-    body = await c.req.json<VerdictRequest>();
+    body = await c.req.json<unknown>();
   } catch {
     return c.json<GameErrorResponse>(
       {
@@ -191,96 +206,78 @@ api.post('/verdict', async (c) => {
     );
   }
 
-  if (
-    !body ||
-    typeof body !== 'object' ||
-    Array.isArray(body) ||
-    typeof body.caseId !== 'string'
-  ) {
-    return c.json<GameErrorResponse>(
-      {
-        status: 'error',
-        message: 'Invalid verdict request.',
-      },
-      400
-    );
-  }
-
   try {
     const now = new Date();
     const gameCase = getDailyCase(now);
     const caseId = gameCase.public.id;
 
-    if (body.caseId !== caseId) {
-      return c.json<GameErrorResponse>(
-        {
-          status: 'error',
-          message: 'The daily case has changed. Reload to investigate the new case.',
-        },
-        409
-      );
-    }
-
-    if (
-      !isCaseSuspect(gameCase, body.suspectId) ||
-      !isCaseEvidence(gameCase, body.evidenceId)
-    ) {
-      return c.json<GameErrorResponse>(
-        {
-          status: 'error',
-          message: 'Invalid suspect or evidence selection.',
-        },
-        400
-      );
-    }
+    const candidate = createSavedVerdict(
+      gameCase,
+      body,
+      now
+    );
 
     const verdictsKey = getVerdictsKey(caseId);
-
-    const verdict: SavedVerdict = {
-      caseId,
-      suspectId: body.suspectId,
-      evidenceId: body.evidenceId,
-      score: scoreCase(
-        gameCase,
-        body.suspectId,
-        body.evidenceId
-      ),
-      submittedAt: now.toISOString(),
-    };
 
     const inserted = await redis.hSetNX(
       verdictsKey,
       userId,
-      JSON.stringify(verdict)
+      serializeVerdict(candidate)
     );
 
-    if (inserted === 1) {
-      return c.json<VerdictResponse>({
+    const alreadySubmitted = inserted !== 1;
+
+    let verdict = candidate;
+
+    if (alreadySubmitted) {
+      const saved = await redis.hGet(
+        verdictsKey,
+        userId
+      );
+
+      if (saved == null) {
+        throw new Error(
+          'Existing verdict could not be retrieved.'
+        );
+      }
+
+      verdict = readSavedVerdict(gameCase, saved);
+    }
+
+    if (isAdvancedCase(gameCase)) {
+      if (verdict.version !== 2) {
+        throw new Error('Unexpected verdict version.');
+      }
+
+      return c.json<AnyVerdictResponse>({
         type: 'verdict',
         verdict,
         solution: gameCase.solution,
-        alreadySubmitted: false,
+        alreadySubmitted,
       });
     }
 
-    const saved = await redis.hGet(
-      verdictsKey,
-      userId
-    );
+    if (verdict.version === 2) {
+      throw new Error('Unexpected verdict version.');
+    }
 
-    if (!saved) {
-      throw new Error(
-        'Existing verdict could not be retrieved.'
+    return c.json<AnyVerdictResponse>({
+      type: 'verdict',
+      verdict,
+      solution: gameCase.solution,
+      alreadySubmitted,
+    });
+  } catch (error) {
+    if (error instanceof SubmissionError) {
+      return c.json<GameErrorResponse>(
+        {
+          status: 'error',
+          message: error.message,
+        },
+        error.status
       );
     }
 
-    return c.json<VerdictResponse>({
-      type: 'verdict',
-      verdict: JSON.parse(saved) as SavedVerdict,
-      solution: gameCase.solution,
-      alreadySubmitted: true,
-    });
-  } catch (error) {
     console.error('Failed to submit verdict:', error);
 
     return c.json<GameErrorResponse>(
@@ -292,4 +289,29 @@ api.post('/verdict', async (c) => {
     );
   }
 });
+
+
+api.post('/decrement', async (c) => {
+  const { postId } = context;
+  if (!postId) {
+    return c.json<ErrorResponse>(
+      {
+        status: 'error',
+        message: 'postId is required',
+      },
+      400
+    );
+  }
+
+  const count = await redis.incrBy('count', -1);
+  return c.json<DecrementResponse>({
+    count,
+    postId,
+    type: 'decrement',
+  });
+});
+
+
+
+
 

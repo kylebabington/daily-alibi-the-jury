@@ -1,4 +1,4 @@
-import type { PublicCase } from './case';
+import type { LegacyPublicCase, AdvancedPublicCase, } from './case';
 
 import type {
   AdvancedSavedVerdict,
@@ -55,7 +55,7 @@ export type CaseResponse = {
   type: 'case';
   caseId: string;
   username: string;
-  publicCase: PublicCase;
+  publicCase: LegacyPublicCase;
   nextResetAt: string;
   verdict: SavedVerdict | null;
   solution: CaseSolution | null;
@@ -84,3 +84,28 @@ export type AnyVerdictRequest =
 export type AnyCaseSolution =
   | CaseSolution
   | AdvancedCaseSolution;
+
+export type AdvancedCaseResponse = {
+  type: 'case';
+  caseId: string;
+  username: string;
+  publicCase: AdvancedPublicCase;
+  nextResetAt: string;
+  verdict: AdvancedSavedVerdict | null;
+  solution: AdvancedCaseSolution | null;
+};
+
+export type AdvancedVerdictResponse = {
+  type: 'verdict';
+  verdict: AdvancedSavedVerdict;
+  solution: AdvancedCaseSolution;
+  alreadySubmitted: boolean;
+};
+
+export type AnyCaseResponse =
+  | CaseResponse
+  | AdvancedCaseResponse;
+
+export type AnyVerdictResponse =
+  | VerdictResponse
+  | AdvancedVerdictResponse;
