@@ -14,11 +14,13 @@ import { validateAdvancedCase } from './integrity';
 import { CASE_001 } from './cases/case-001';
 import { CASE_002 } from './cases/case-002';
 import { CASE_003 } from './cases/case-003';
+import { CASE_004 } from './cases/case-004';
 
 export const CASES: readonly AnyPrivateCase[] = [
     CASE_001,
     CASE_002,
     CASE_003,
+    CASE_004,
 ];
 
 export function validateCaseRegistry(
