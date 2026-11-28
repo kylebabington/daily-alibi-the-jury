@@ -6,6 +6,16 @@ import type {
     SaveProgressResponse,
 } from '../shared/progress';
 
+export class ProgressApiError extends Error {
+    constructor(
+        message: string,
+        public readonly status: number
+    ) {
+        super(message);
+        this.name = 'ProgressApiError';
+    }
+}
+
 async function readError(
     response: Response
 ): Promise<string> {
@@ -28,16 +38,22 @@ async function readError(
 }
 
 export async function loadInvestigationProgress(
+    caseId: string,
     signal?: AbortSignal
 ): Promise<SavedInvestigationProgress | null> {
-    const response = await fetch('/api/progress', {
-        method: 'GET',
-        cache: 'no-store',
-        ...(signal ? { signal } : {}),
-    });
+    const response = await fetch(
+        `/api/progress?caseId=${encodeURIComponent(caseId)}`,
+        {
+            cache: 'no-store',
+            ...(signal ? { signal } : {}),
+        }
+    );
 
     if (!response.ok) {
-        throw new Error(await readError(response));
+        throw new ProgressApiError(
+            await readError(response),
+            response.status
+        );
     }
 
     const data =
@@ -64,7 +80,10 @@ export async function saveInvestigationProgress(
     });
 
     if (!response.ok) {
-        throw new Error(await readError(response));
+        throw new ProgressApiError(
+            await readError(response),
+            response.status
+        );
     }
 
     const data =

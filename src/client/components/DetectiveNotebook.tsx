@@ -214,7 +214,7 @@ export function DetectiveNotebook({
                 />
 
                 <div className="mt-2 flex justify-between gap-2 text-xs text-slate-400">
-                    <span>Current session only</span>
+                    <span>Private investigation notes</span>
 
                     <span>
                         {notebook.notes.length}/{MAX_NOTE_LENGTH}

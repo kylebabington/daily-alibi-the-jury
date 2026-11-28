@@ -323,6 +323,29 @@ api.get('/progress', async (c) => {
     const gameCase = getDailyCase();
     const caseId = gameCase.public.id;
 
+    const requestedCaseId = c.req.query('caseId');
+
+    if (!requestedCaseId) {
+      return c.json<GameErrorResponse>(
+        {
+          status: 'error',
+          message: 'A case ID is required.',
+        },
+        400
+      );
+    }
+
+    if (requestedCaseId !== caseId) {
+      return c.json<GameErrorResponse>(
+        {
+          status: 'error',
+          message:
+            'The daily case has changed. Reload the game to continue.',
+        },
+        409
+      );
+    }
+
     const [savedVerdict, savedProgress] =
       await Promise.all([
         redis.hGet(
@@ -337,10 +360,14 @@ api.get('/progress', async (c) => {
 
     // A completed verdict always takes priority.
     if (savedVerdict != null) {
-      return c.json<ProgressResponse>({
-        type: 'progress',
-        progress: null,
-      });
+      return c.json<GameErrorResponse>(
+        {
+          status: 'error',
+          message:
+            'This investigation is already complete. Reload the game to view your verdict.',
+        },
+        409
+      );
     }
 
     const progress =
@@ -419,6 +446,23 @@ api.post('/progress', async (c) => {
   try {
     const gameCase = getDailyCase();
     const caseId = gameCase.public.id;
+
+    if (
+      typeof body === 'object' &&
+      body !== null &&
+      'caseId' in body &&
+      typeof body.caseId === 'string' &&
+      body.caseId !== caseId
+    ) {
+      return c.json<GameErrorResponse>(
+        {
+          status: 'error',
+          message:
+            'The daily case has changed. Reload the game to continue.',
+        },
+        409
+      );
+    }
 
     if (!validateProgress(gameCase.public, body)) {
       return c.json<GameErrorResponse>(
